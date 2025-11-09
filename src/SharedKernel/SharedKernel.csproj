@@ -1,0 +1,63 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+	<PropertyGroup>
+		<TargetFramework>net9.0</TargetFramework>
+		<ImplicitUsings>false</ImplicitUsings>
+		<Nullable>enable</Nullable>
+		<GeneratePackageOnBuild>True</GeneratePackageOnBuild>
+		<Version>1.0.0.105</Version>
+		<PackageVersion>1.0.0.105</PackageVersion>
+		<PackageId>Sortex.$(AssemblyName)</PackageId>
+		<Title>SharedKernel – DDD &amp; CQRS Essentials</Title>
+		<Authors>Sortex</Authors>
+		<Description>
+SharedKernel is a foundational, open-source .NET library providing essential building blocks for Domain-Driven Design (DDD), Clean Architecture, and CQRS patterns.
+
+It offers:
+
+- CQRS interfaces (IRequest&lt;T&gt;, IRequestHandler&lt;TRequest, TResponse&gt;) along with a built-in Mediator implementation for command and query handling following MediatR principles.
+
+- Robust domain modeling support with base classes like EntityBase, DomainEntityBase, and DomainEventBase to facilitate aggregate roots, domain events, and event dispatching via the IDomainEventDispatcher interface.
+
+- Built-in retry and persistence support for domain events that fail to publish to message brokers, ensuring reliable event delivery.
+
+- Reusable application exceptions such as DomainException and RecordNotFoundException to standardize error handling across applications.
+
+- Common DTOs including BaseResponseDTO&lt;T&gt; for consistent API response structures and validation error handling.
+
+- Utilities for secure token generation, date/time conversions, platform detection, and more, to accelerate backend development.
+
+- Configuration support for cache entry expiration and message broker connection settings.
+
+SharedKernel is designed for teams embracing DDD and CQRS with EF Core and aims to improve modularity, consistency, and maintainability across .NET services and applications.
+		</Description>
+		<Copyright>Copyright © 2025 Sortex. All rights reserved.</Copyright>
+		<PackageRequireLicenseAcceptance>True</PackageRequireLicenseAcceptance>
+		<PackageLicenseFile>LICENSE</PackageLicenseFile>
+		<IncludePackageReferencesDuringMarkupCompilation>true</IncludePackageReferencesDuringMarkupCompilation>
+		<PackageTags>.NET;SharedKernel;CQRS;DDD;EF Core;Domain Events;MediatR;BaseEntity;Clean Architecture;Application Building Blocks;Retry;Token Generation;Utilities;Value Objects;Extensions;Caching;Message Broker</PackageTags>
+		<PackageReadmeFile>README.md</PackageReadmeFile>
+		<PackageProjectUrl>https://github.com/SortexMe/SharedKernel</PackageProjectUrl>
+	</PropertyGroup>
+
+	<ItemGroup>
+		<None Include="..\..\README.md">
+			<Pack>True</Pack>
+			<PackagePath>\</PackagePath>
+		</None>
+		<None Include="LICENSE" Pack="true" PackagePath="" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="9.0.6" />
+		<PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="9.0.6" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<None Update="..\..\README.md">
+			<Pack>True</Pack>
+			<PackagePath>\</PackagePath>
+		</None>
+	</ItemGroup>
+
+</Project>
