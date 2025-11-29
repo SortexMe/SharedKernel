@@ -148,10 +148,9 @@ public sealed class UserDomainModel
     /// password hash, and security group ID.
     /// </summary>
     /// <param name="createUserDTO">The DTO containing user creation data.</param>
-    /// <param name="securityGroupId">The security group ID to assign to the user.</param>
     /// <param name="passwordHash">The hashed password.</param>
     /// <returns>The created <see cref="ApplicationUser"/> instance.</returns>
-    public static ApplicationUser Create(CreateUserDTO createUserDTO, string securityGroupId, string passwordHash)
+    public static ApplicationUser Create(CreateUserDTO createUserDTO, string passwordHash)
     {
         var user = new ApplicationUser
         {
@@ -162,7 +161,6 @@ public sealed class UserDomainModel
             Email = createUserDTO.Email,
             PasswordHash = passwordHash,
             CountryId = createUserDTO.CountryId,
-            SecurityGroupId = securityGroupId,
         };
 
         var token = TokenGenerator.GenerateToken();

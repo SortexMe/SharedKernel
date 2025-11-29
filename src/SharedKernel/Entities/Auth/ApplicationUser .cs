@@ -95,12 +95,6 @@ public class ApplicationUser : DomainEntityBase
     public string CountryId { get; set; } = null!;
 
     /// <summary>
-    /// Gets or sets the security group identifier to which the user belongs.
-    /// </summary>
-    [MaxLength(100)]
-    public string SecurityGroupId { get; set; } = null!;
-
-    /// <summary>
     /// Gets or sets the collection of external login providers associated with this user.
     /// </summary>
     public virtual ICollection<ApplicationUserLogin> ApplicationUserLogins { get; set; } = new HashSet<ApplicationUserLogin>();
