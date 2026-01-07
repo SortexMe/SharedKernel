@@ -33,6 +33,21 @@ public class Country : EntityBase
     public string NativeSymbol { get; set; } = null!;
 
     /// <summary>
+    /// The currency name in English, based on the ISO 4217 standard
+    /// (e.g. "Saudi Riyal", "US Dollar").
+    /// This value is used for display purposes in English-based UIs
+    /// and backend integrations.
+    /// </summary>
+    public string CurrencyDisplayName { get; set; } = null!;
+
+    /// <summary>
+    /// The currency name in the native language of the issuing country,
+    /// based on Unicode CLDR data (e.g. "ريال سعودي", "دولار أمريكي").
+    /// This value is intended for localized and multilingual user interfaces.
+    /// </summary>
+    public string CurrencyNativeName { get; set; } = null!;
+
+    /// <summary>
     /// Gets or sets the number of decimal places used in the country's currency.
     /// </summary>
     public int DecimalPlaces { get; set; }
