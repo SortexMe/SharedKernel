@@ -161,6 +161,8 @@ public sealed class UserDomainModel
             Email = createUserDTO.Email,
             PasswordHash = passwordHash,
             CountryId = createUserDTO.CountryId,
+            NormalizedUserName = createUserDTO.UserName.ToUpper(),
+            NormalizedEmail = createUserDTO.Email.ToUpper(),
         };
 
         var token = TokenGenerator.GenerateToken();
