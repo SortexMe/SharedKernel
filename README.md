@@ -2,7 +2,7 @@
 
 SharedKernel is a reusable, open-source .NET library of foundational building blocks for Domain-Driven Design (DDD), Clean Architecture, and CQRS. It provides a lightweight mediator, pipeline behaviors, domain event primitives, base entities, standardized DTOs, domain exceptions, and utilities that reduce boilerplate and promote consistent patterns across services.
 
-- Target framework: `net9.0`
+- Target framework: `net10.0`
 - Package id: `Sortex.SharedKernel`
 - Current package version in this repository: `1.0.0.109`
 - License: `MIT` (see `LICENSE`)
