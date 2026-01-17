@@ -23,10 +23,27 @@ public class ApplicationUser : DomainEntityBase
     public string UserName { get; set; } = null!;
 
     /// <summary>
-    /// Gets or sets the email address for this user.
+    /// Gets or sets the normalized user name.
+    /// This value is typically stored in uppercase and used for case-insensitive lookups,
+    /// enabling efficient indexing and avoiding full table scans in relational databases.
+    /// </summary>
+    [MaxLength(256)]
+    public string NormalizedUserName { get; set; } = null!;
+
+    /// <summary>
+    /// Gets or sets the email address associated with the user.
     /// </summary>
     [MaxLength(256)]
     public string Email { get; set; } = null!;
+
+    /// <summary>
+    /// Gets or sets the normalized email address.
+    /// This value is typically stored in uppercase and used for case-insensitive comparisons
+    /// and optimized querying in relational databases.
+    /// </summary>
+    [MaxLength(256)]
+    public string NormalizedEmail { get; set; } = null!;
+
 
     /// <summary>
     /// Gets or sets a flag indicating if a user has confirmed their email address.
