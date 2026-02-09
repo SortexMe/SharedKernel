@@ -38,6 +38,9 @@ public sealed class UserDomainModel
     /// </summary>
     public void ForgetPassword()
     {
+        if (!user.IsActive)
+            throw DomainException.CreateDetailedException("The user was not found or is no longer active.", "UserNotFoundOrDeleted", "PhoneNumberOrEmail");
+
         var token = TokenGenerator.GenerateToken();
         user.ApplicationUserTokens.Add(new ApplicationUserToken
         {
@@ -61,6 +64,9 @@ public sealed class UserDomainModel
     /// </exception>
     public void ResetPassword(string token, string passwordHash)
     {
+        if (!user.IsActive)
+            throw DomainException.CreateDetailedException("The user was not found or is no longer active.", "UserNotFoundOrDeleted", "PhoneNumberOrEmail");
+
         var userToken = user.ApplicationUserTokens.FirstOrDefault(m => m.Token == token && m.TokenType == UserTokenType.PasswordReset && m.ExpiryDate > DateTimeOffset.UtcNow);
 
         if (userToken is null)
@@ -92,6 +98,9 @@ public sealed class UserDomainModel
     /// </exception>
     public void RefreshToken(TokenResponseDTO token, string newRefreshToken, TimeSpan? refreshTokenDuration = null)
     {
+        if (!user.IsActive)
+            throw DomainException.CreateDetailedException("The user was not found or is no longer active.", "UserNotFoundOrDeleted", "PhoneNumberOrEmail");
+
         var errors = new List<DTOValidationError>();
         if (!token.RefreshToken.Equals(user.RefreshToken) || (user.RefreshTokenExpiry.HasValue && user.RefreshTokenExpiry.Value < DateTimeOffset.UtcNow))
             errors.Add(DTOValidationError.CreateDetailedError("Invalid Token", "InvalidValidator", "Token"));
@@ -116,10 +125,11 @@ public sealed class UserDomainModel
     /// </exception>
     public void LoginUser(bool isPasswordValid, string newRefreshToken, TimeSpan? refreshTokenDuration = null)
     {
+        if (!user.IsActive)
+            throw DomainException.CreateDetailedException("The user was not found or is no longer active.", "UserNotFoundOrDeleted", "PhoneNumberOrEmail");
+
         if (!user.EmailConfirmed)
-        {
             throw DomainException.CreateDetailedException("Email is not confirmed", "EmailNotConfirmed", "PhoneNumberOrEmail");
-        }
 
         if (user.AccessFailedCount >= 5)
         {

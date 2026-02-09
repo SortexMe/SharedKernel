@@ -112,6 +112,11 @@ public class ApplicationUser : DomainEntityBase
     public string CountryId { get; set; } = null!;
 
     /// <summary>
+    /// Indicates whether the entity is active. Inactive entities are considered soft-deleted.
+    /// </summary>
+    public bool IsActive { get; set; } = true;
+
+    /// <summary>
     /// Gets or sets the collection of external login providers associated with this user.
     /// </summary>
     public virtual ICollection<ApplicationUserLogin> ApplicationUserLogins { get; set; } = new HashSet<ApplicationUserLogin>();

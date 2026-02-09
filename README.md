@@ -4,7 +4,7 @@ SharedKernel is a reusable, open-source .NET library of foundational building bl
 
 - Target framework: `net10.0`
 - Package id: `Sortex.SharedKernel`
-- Current package version in this repository: `1.0.0.109`
+- Current package version in this repository: `1.0.0.110`
 - License: `MIT` (see `LICENSE`)
 
 ---
