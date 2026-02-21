@@ -17,9 +17,8 @@ public abstract class DomainEntityBase : HasDomainEventsBase, IEntityBase, IEqua
     /// <summary>
     /// Unique identifier for the entity.
     /// </summary>
-    [MaxLength(100)]
     [DatabaseGenerated(DatabaseGeneratedOption.Identity)]
-    public string Id { get; set; } = null!;
+    public Guid Id { get; set; }
 
     /// <summary>
     /// Compares two domain entities for equality using their <see cref="Id"/> values.

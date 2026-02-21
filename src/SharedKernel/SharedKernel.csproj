@@ -5,8 +5,8 @@
 		<ImplicitUsings>false</ImplicitUsings>
 		<Nullable>enable</Nullable>
 		<GeneratePackageOnBuild>True</GeneratePackageOnBuild>
-		<Version>1.0.0.110</Version>
-		<PackageVersion>1.0.0.110</PackageVersion>
+		<Version>1.0.0.115</Version>
+		<PackageVersion>1.0.0.115</PackageVersion>
 		<PackageId>Sortex.$(AssemblyName)</PackageId>
 		<Title>SharedKernel – DDD &amp; CQRS Essentials</Title>
 		<Authors>Sortex</Authors>
@@ -49,8 +49,8 @@
 	</ItemGroup>
 
 	<ItemGroup>
-		<PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.2" />
-		<PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.2" />
+		<PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.3" />
+		<PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.3" />
 	</ItemGroup>
 
 	<ItemGroup>

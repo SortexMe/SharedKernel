@@ -164,7 +164,7 @@ public sealed class UserDomainModel
     {
         var user = new ApplicationUser
         {
-            Id = Guid.CreateVersion7().ToString(),
+            Id = Guid.CreateVersion7(),
             ContactName = createUserDTO.ContactName,
             UserName = createUserDTO.UserName,
             PhoneNumber = createUserDTO.PhoneNumber,

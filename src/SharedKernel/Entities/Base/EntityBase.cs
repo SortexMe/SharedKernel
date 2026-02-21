@@ -17,9 +17,8 @@ public abstract class EntityBase : IEntityBase, IEquatable<EntityBase>
     /// <summary>
     /// Unique identifier for the entity.
     /// </summary>
-    [MaxLength(100)]
     [DatabaseGenerated(DatabaseGeneratedOption.Identity)]
-    public string Id { get; set; } = null!;
+    public Guid Id { get; set; }
 
     /// <summary>
     /// Compares two entity instances for equality based on their <see cref="Id"/>.

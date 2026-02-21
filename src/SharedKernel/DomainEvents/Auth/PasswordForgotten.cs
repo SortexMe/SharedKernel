@@ -1,4 +1,6 @@
-﻿namespace SharedKernel.DomainEvents.Auth;
+﻿using System;
+
+namespace SharedKernel.DomainEvents.Auth;
 
 /// <summary>
 /// Domain event that is triggered when a user requests a password reset.
@@ -7,7 +9,7 @@
 /// <param name="UserEmail">The email address of the user.</param>
 /// <param name="ContactName">The contact name associated with the user.</param>
 /// <param name="Token">The password reset token issued for this request.</param>
-public record UserPasswordForgotten(string UserId, string UserEmail, string ContactName, string Token) : DomainEventBase;
+public record UserPasswordForgotten(Guid UserId, string UserEmail, string ContactName, string Token) : DomainEventBase;
 
 // Development Notes:
 // - This event encapsulates the necessary information to handle password reset workflows.
