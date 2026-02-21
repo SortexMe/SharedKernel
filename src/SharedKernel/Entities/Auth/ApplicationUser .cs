@@ -108,8 +108,7 @@ public class ApplicationUser : DomainEntityBase
     /// <summary>
     /// Gets or sets the country identifier related to the user.
     /// </summary>
-    [MaxLength(100)]
-    public string CountryId { get; set; } = null!;
+    public Guid CountryId { get; set; }
 
     /// <summary>
     /// Indicates whether the entity is active. Inactive entities are considered soft-deleted.

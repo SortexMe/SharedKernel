@@ -1,4 +1,5 @@
 ﻿using SharedKernel.ValueObjects.Base;
+using System;
 using System.Collections.Generic;
 
 namespace SharedKernel.ValueObjects;
@@ -43,7 +44,7 @@ public class Address : ValueObject
     /// <remarks>
     /// This should correspond to a valid country record in the system or ISO code.
     /// </remarks>
-    public string CountryId { get; set; } = null!;
+    public Guid CountryId { get; set; }
 
     /// <summary>
     /// Returns an enumeration of atomic values used for equality comparisons.
@@ -56,6 +57,6 @@ public class Address : ValueObject
         yield return City ?? string.Empty;
         yield return State ?? string.Empty;
         yield return PostalCode ?? string.Empty;
-        yield return CountryId ?? string.Empty;
+        yield return CountryId;
     }
 }

@@ -1,4 +1,5 @@
 ﻿using SharedKernel.Entities;
+using System;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -19,5 +20,5 @@ public interface ITenantRepository : IRepository<TenantConnection>
     // Development Note:
     // This method supports multi-tenant scenarios by dynamically resolving connection strings.
     // It is typically used during request handling to determine which database to route to.
-    Task<string?> GetTenantConnectionString(string? connectionId = null, CancellationToken cancellationToken = default);
+    Task<string?> GetTenantConnectionString(Guid? connectionId = null, CancellationToken cancellationToken = default);
 }

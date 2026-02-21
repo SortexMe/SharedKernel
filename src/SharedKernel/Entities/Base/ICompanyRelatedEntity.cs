@@ -1,4 +1,5 @@
-﻿using System.ComponentModel.DataAnnotations;
+﻿using System;
+using System.ComponentModel.DataAnnotations;
 
 namespace SharedKernel.Entities.Base;
 
@@ -15,9 +16,8 @@ public interface ICompanyRelatedEntity
     /// <summary>
     /// Gets or sets the company identifier to which the entity belongs.
     /// </summary>
-    [MaxLength(100)]
     // Development Note:
     // This property will be automatically populated during persistence operations
     // if it is null or empty to enforce company data isolation.
-    public string CompanyId { get; set; }
+    public Guid CompanyId { get; set; }
 }

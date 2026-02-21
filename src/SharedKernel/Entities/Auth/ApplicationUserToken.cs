@@ -13,7 +13,7 @@ public class ApplicationUserToken : EntityBase
     /// <summary>
     /// Gets or sets the identifier of the user associated with this token.
     /// </summary>
-    public string UserId { get; set; } = null!;
+    public Guid UserId { get; set; }
 
     /// <summary>
     /// Gets or sets the token string value.

@@ -13,7 +13,7 @@ public class ApplicationUserLogin : DomainEntityBase
     /// <summary>
     /// Gets or sets the identifier of the user associated with this login.
     /// </summary>
-    public string UserId { get; set; } = null!;
+    public Guid UserId { get; set; }
 
     /// <summary>
     /// Gets or sets the date and time of the login event in UTC.
