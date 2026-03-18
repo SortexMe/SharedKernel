@@ -44,11 +44,6 @@ public abstract class EntityBase : IEntityBase, IEquatable<EntityBase>
         return first.Equals(second);
     }
 
-    public static bool operator !=(EntityBase? first, EntityBase? second)
-    {
-        return !(first == second);
-    }
-
     /// <summary>
     /// Determines if two entities are not equal.
     /// </summary>
