@@ -25,12 +25,28 @@ public abstract class EntityBase : IEntityBase, IEquatable<EntityBase>
     /// </summary>
     /// <param name="first">The first entity to compare.</param>
     /// <param name="second">The second entity to compare.</param>
-    /// <returns>True if both entities are non-null and have the same <see cref="Id"/>; otherwise, false.</returns>
-    // Development Note:
-    // Enables use of '==' operator for comparing entity instances by identity.
+    /// <returns>True if both are null, or both are non-null with the same <see cref="Id"/>.</returns>
     public static bool operator ==(EntityBase? first, EntityBase? second)
     {
-        return first is not null && second is not null && first.Equals(second);
+        // 1. Handle cases where both are null or both point to the same instance
+        if (ReferenceEquals(first, second))
+        {
+            return true;
+        }
+
+        // 2. If one is null (but not both), they cannot be equal
+        if (first is null || second is null)
+        {
+            return false;
+        }
+
+        // 3. Both are guaranteed non-null here; use the Equals logic
+        return first.Equals(second);
+    }
+
+    public static bool operator !=(EntityBase? first, EntityBase? second)
+    {
+        return !(first == second);
     }
 
     /// <summary>

@@ -5,8 +5,8 @@
 		<ImplicitUsings>false</ImplicitUsings>
 		<Nullable>enable</Nullable>
 		<GeneratePackageOnBuild>True</GeneratePackageOnBuild>
-		<Version>1.0.0.116</Version>
-		<PackageVersion>1.0.0.116</PackageVersion>
+		<Version>1.0.0.117</Version>
+		<PackageVersion>1.0.0.117</PackageVersion>
 		<PackageId>Sortex.$(AssemblyName)</PackageId>
 		<Title>SharedKernel – DDD &amp; CQRS Essentials</Title>
 		<Authors>Sortex</Authors>
