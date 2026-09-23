@@ -151,4 +151,39 @@ public class WrapperCacheTests
 
         cache.Count.Should().Be(1);
     }
+
+    [Fact]
+    public async Task Dynamic_Send_Populates_Cache_And_Reuses_Wrapper()
+    {
+        using var container = BuildContainer();
+        var cache = container.GetRequiredService<RequestHandlerWrapperCache>();
+        cache.Clear();
+
+        var mediator = container.GetRequiredService<IMediator>();
+        object command1 = new PingCommand("dyn1");
+        object command2 = new PingCommand("dyn2");
+
+        var result1 = await mediator.Send(command1);
+        result1.Should().Be("Pong: dyn1");
+        cache.Count.Should().Be(1);
+
+        var result2 = await mediator.Send(command2);
+        result2.Should().Be("Pong: dyn2");
+        cache.Count.Should().Be(1);
+    }
+
+    [Fact]
+    public async Task Dynamic_Send_With_Invalid_Request_Throws_And_Does_Not_Poison_Cache()
+    {
+        using var container = BuildContainer();
+        var cache = container.GetRequiredService<RequestHandlerWrapperCache>();
+        cache.Clear();
+
+        var mediator = container.GetRequiredService<IMediator>();
+        object invalid = "not a request";
+
+        var act = async () => await mediator.Send(invalid);
+        await act.Should().ThrowAsync<ArgumentException>();
+        cache.Count.Should().Be(0);
+    }
 }

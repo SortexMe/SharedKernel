@@ -1,6 +1,7 @@
 using SharedKernel.Abstractions.CQRS;
 using System;
 using System.Collections.Concurrent;
+using System.Linq;
 
 namespace SharedKernel.Mediator;
 
@@ -36,6 +37,7 @@ public sealed class RequestHandlerWrapperCache
     internal static readonly Type VoidResponse = typeof(void);
 
     private readonly ConcurrentDictionary<(Type Request, Type Response), RequestHandlerBase> _wrappers = new();
+    private readonly ConcurrentDictionary<Type, RequestHandlerBase> _dynamicWrappers = new();
 
     /// <summary>
     /// Gets the number of distinct (request, response) pairs currently cached.
@@ -49,21 +51,55 @@ public sealed class RequestHandlerWrapperCache
     /// <param name="responseType">The response type, or <see cref="VoidResponse"/> for a void request.</param>
     /// <returns>The wrapper that dispatches this request type.</returns>
     /// <exception cref="InvalidOperationException">Thrown when the wrapper type cannot be constructed.</exception>
-    internal RequestHandlerBase GetOrAdd(Type requestType, Type responseType) =>
-        _wrappers.GetOrAdd((requestType, responseType), static key =>
+    internal RequestHandlerBase GetOrAdd(Type requestType, Type responseType)
+    {
+        var key = (requestType, responseType);
+        if (_wrappers.TryGetValue(key, out var wrapper))
+            return wrapper;
+
+        return _wrappers.GetOrAdd(key, static k =>
         {
-            var wrapperType = key.Response == VoidResponse
-                ? typeof(RequestHandlerWrapperImpl<>).MakeGenericType(key.Request)
-                : typeof(RequestHandlerWrapperImpl<,>).MakeGenericType(key.Request, key.Response);
+            var wrapperType = k.Response == VoidResponse
+                ? typeof(RequestHandlerWrapperImpl<>).MakeGenericType(k.Request)
+                : typeof(RequestHandlerWrapperImpl<,>).MakeGenericType(k.Request, k.Response);
 
-            var wrapper = Activator.CreateInstance(wrapperType)
-                ?? throw new InvalidOperationException($"Could not create wrapper type for {key.Request}");
+            var created = Activator.CreateInstance(wrapperType)
+                ?? throw new InvalidOperationException($"Could not create wrapper type for {k.Request}");
 
-            return (RequestHandlerBase)wrapper;
+            return (RequestHandlerBase)created;
         });
+    }
+
+    /// <summary>
+    /// Returns the cached wrapper for dynamic dispatch of the given request type, resolving its response type on first use.
+    /// </summary>
+    /// <param name="requestType">The concrete request type.</param>
+    /// <returns>The wrapper that dispatches this request type.</returns>
+    /// <exception cref="ArgumentException">Thrown when the request type does not implement <see cref="IRequest"/>.</exception>
+    internal RequestHandlerBase GetOrAdd(Type requestType)
+    {
+        if (_dynamicWrappers.TryGetValue(requestType, out var wrapper))
+            return wrapper;
+
+        return _dynamicWrappers.GetOrAdd(requestType, static (reqType, cache) =>
+        {
+            var responseType = reqType.GetInterfaces()
+                .FirstOrDefault(static i => i.IsGenericType && i.GetGenericTypeDefinition() == typeof(IRequest<>))
+                ?.GetGenericArguments()[0];
+
+            if (responseType is null && !typeof(IRequest).IsAssignableFrom(reqType))
+                throw new ArgumentException($"{reqType.Name} does not implement {nameof(IRequest)}", "request");
+
+            return cache.GetOrAdd(reqType, responseType ?? VoidResponse);
+        }, this);
+    }
 
     /// <summary>
     /// Removes every cached wrapper. Intended for tests; the cache repopulates on the next send.
     /// </summary>
-    public void Clear() => _wrappers.Clear();
+    public void Clear()
+    {
+        _wrappers.Clear();
+        _dynamicWrappers.Clear();
+    }
 }

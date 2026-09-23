@@ -1,6 +1,5 @@
 using SharedKernel.Abstractions.CQRS;
 using System;
-using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -81,7 +80,6 @@ public class Mediator : IMediator
             throw new ArgumentNullException(nameof(request));
 
         var handler = (RequestHandlerWrapper)_wrappers.GetOrAdd(request.GetType(), RequestHandlerWrapperCache.VoidResponse);
-
         return handler.Handle(request, _serviceProvider, cancellationToken);
     }
 
@@ -98,17 +96,7 @@ public class Mediator : IMediator
         if (request == null)
             throw new ArgumentNullException(nameof(request));
 
-        var requestType = request.GetType();
-
-        // Resolve the declared response type so the cache key matches the strongly-typed overloads.
-        var responseType = requestType.GetInterfaces()
-            .FirstOrDefault(static i => i.IsGenericType && i.GetGenericTypeDefinition() == typeof(IRequest<>))
-            ?.GetGenericArguments()[0];
-
-        if (responseType is null && !typeof(IRequest).IsAssignableFrom(requestType))
-            throw new ArgumentException($"{requestType.Name} does not implement {nameof(IRequest)}", nameof(request));
-
-        var handler = _wrappers.GetOrAdd(requestType, responseType ?? RequestHandlerWrapperCache.VoidResponse);
+        var handler = _wrappers.GetOrAdd(request.GetType());
 
         return handler.Handle(request, _serviceProvider, cancellationToken);
     }

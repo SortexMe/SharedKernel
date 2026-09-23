@@ -1,4 +1,4 @@
-﻿using FluentAssertions;
+using FluentAssertions;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Moq;
@@ -253,6 +253,39 @@ public class BehaviorTests
         await serviceProvider.GetRequiredService<IMediator>().Send(new TokenProbeCommand());
 
         VerifyLogged(loggerMock, LogLevel.Information, "Handling TokenProbeCommand", Times.Once());
+    }
+
+    [Fact]
+    public async Task LoggingBehavior_DebugLevel_Logs_Properties_With_Redaction()
+    {
+        var complexLoggerMock = new Mock<ILogger<ComplexCommand>>();
+        complexLoggerMock.Setup(x => x.IsEnabled(LogLevel.Information)).Returns(true);
+        complexLoggerMock.Setup(x => x.IsEnabled(LogLevel.Debug)).Returns(true);
+
+        var services = new ServiceCollection();
+        services.AddSingleton<IRequestHandler<ComplexCommand, ComplexResponse>, ComplexCommandHandler>();
+        services.AddSingleton(typeof(ILogger<ComplexCommand>), complexLoggerMock.Object);
+        services.AddMediator(options =>
+        {
+            options.RegisterServicesFromAssembly(Assembly.GetExecutingAssembly());
+            options.AddOpenBehavior(typeof(LoggingBehavior<,>));
+        });
+
+        using var provider = services.BuildServiceProvider();
+        var mediator = provider.GetRequiredService<IMediator>();
+
+        var command = new ComplexCommand
+        {
+            Name = "John Doe",
+            Age = 35,
+            Tags = new List<string> { "dev" }
+        };
+
+        await mediator.Send(command);
+
+        VerifyLogged(complexLoggerMock, LogLevel.Information, "Handling ComplexCommand", Times.Once());
+        VerifyLogged(complexLoggerMock, LogLevel.Debug, "Property Name", Times.Once());
+        VerifyLogged(complexLoggerMock, LogLevel.Debug, "Property Age", Times.Once());
     }
 
     private static void VerifyLogged<T>(Mock<ILogger<T>> logger, LogLevel level, string contains, Times times) =>

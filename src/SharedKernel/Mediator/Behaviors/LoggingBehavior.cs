@@ -1,4 +1,4 @@
-﻿using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging;
 using SharedKernel.Abstractions.CQRS;
 using System;
 using System.Diagnostics;
@@ -25,7 +25,15 @@ namespace SharedKernel.Mediator.Behaviors;
 /// <typeparam name="TResponse">The type of the response.</typeparam>
 public class LoggingBehavior<TRequest, TResponse> : IPipelineBehavior<TRequest, TResponse> where TRequest : notnull
 {
-    private static readonly string[] SecretMarkers =
+    private static readonly string _requestName = typeof(TRequest).Name;
+
+    private static readonly PropertyInfo[] _cachedProperties = Array.FindAll(
+        typeof(TRequest).GetProperties(BindingFlags.Public | BindingFlags.Instance),
+        static p => p.GetIndexParameters().Length == 0);
+
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<Type, PropertyInfo[]> _propertyCache = new();
+
+    private static readonly string[] _secretMarkers =
     [
         "password", "passwd", "pwd", "secret", "token", "apikey", "api_key", "key", "credential", "connectionstring", "authorization",
     ];
@@ -37,30 +45,46 @@ public class LoggingBehavior<TRequest, TResponse> : IPipelineBehavior<TRequest, 
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
-    public async Task<TResponse> Handle(TRequest request, RequestHandlerDelegate<TResponse> next, CancellationToken cancellationToken)
+    private static readonly Action<ILogger, string, Exception?> _logHandling =
+        LoggerMessage.Define<string>(LogLevel.Information, new EventId(1, nameof(Handle)), "Handling {RequestName}");
+
+    private static readonly Action<ILogger, string, double, Exception?> _logHandled =
+        LoggerMessage.Define<string, double>(LogLevel.Information, new EventId(2, nameof(Handle)), "Handled {RequestName} in {ElapsedMilliseconds} ms");
+
+    public Task<TResponse> Handle(TRequest request, RequestHandlerDelegate<TResponse> next, CancellationToken cancellationToken)
     {
         if (request is null)
             throw new ArgumentNullException(nameof(request));
 
-        var requestName = typeof(TRequest).Name;
-
         if (!_logger.IsEnabled(LogLevel.Information))
-            return await next(cancellationToken).ConfigureAwait(false);
+            return next(cancellationToken);
 
-        _logger.LogInformation("Handling {RequestName}", requestName);
+        _logHandling(_logger, _requestName, null);
 
         if (_logger.IsEnabled(LogLevel.Debug))
             LogProperties(request);
 
         var start = Stopwatch.GetTimestamp();
+        var task = next(cancellationToken);
 
+        if (task.IsCompletedSuccessfully)
+        {
+            _logHandled(_logger, _requestName, Stopwatch.GetElapsedTime(start).TotalMilliseconds, null);
+            return task;
+        }
+
+        return AwaitAndLogAsync(task, start);
+    }
+
+    private async Task<TResponse> AwaitAndLogAsync(Task<TResponse> task, long start)
+    {
         try
         {
-            return await next(cancellationToken).ConfigureAwait(false);
+            return await task.ConfigureAwait(false);
         }
         finally
         {
-            _logger.LogInformation("Handled {RequestName} in {ElapsedMilliseconds} ms", requestName, Stopwatch.GetElapsedTime(start).TotalMilliseconds);
+            _logHandled(_logger, _requestName, Stopwatch.GetElapsedTime(start).TotalMilliseconds, null);
         }
     }
 
@@ -70,7 +94,7 @@ public class LoggingBehavior<TRequest, TResponse> : IPipelineBehavior<TRequest, 
     /// </summary>
     protected virtual bool ShouldRedact(PropertyInfo property)
     {
-        foreach (var marker in SecretMarkers)
+        foreach (var marker in _secretMarkers)
         {
             if (property.Name.Contains(marker, StringComparison.OrdinalIgnoreCase))
                 return true;
@@ -79,13 +103,22 @@ public class LoggingBehavior<TRequest, TResponse> : IPipelineBehavior<TRequest, 
         return false;
     }
 
+    private static PropertyInfo[] GetProperties(Type type)
+    {
+        if (type == typeof(TRequest))
+            return _cachedProperties;
+
+        return _propertyCache.GetOrAdd(type, static t => Array.FindAll(
+            t.GetProperties(BindingFlags.Public | BindingFlags.Instance),
+            static p => p.GetIndexParameters().Length == 0));
+    }
+
     private void LogProperties(TRequest request)
     {
-        foreach (var property in request.GetType().GetProperties(BindingFlags.Public | BindingFlags.Instance))
+        var properties = GetProperties(request.GetType());
+        for (var i = 0; i < properties.Length; i++)
         {
-            if (property.GetIndexParameters().Length > 0)
-                continue;
-
+            var property = properties[i];
             object? value = ShouldRedact(property) ? "***" : property.GetValue(request);
             _logger.LogDebug("Property {Property} : {@Value}", property.Name, value);
         }

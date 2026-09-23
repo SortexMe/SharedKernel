@@ -1,4 +1,4 @@
-﻿using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using SharedKernel.Abstractions.CQRS;
 using SharedKernel.DependencyInjection;
@@ -64,9 +64,9 @@ public static class ServiceRegistrar
         CancellationToken cancellationToken = default)
     {
         var concretions = new List<Type>();
-        var interfaces = new List<Type>();
+        var interfaces = new HashSet<Type>();
         var genericConcretions = new List<Type>();
-        var genericInterfaces = new List<Type>();
+        var genericInterfaces = new HashSet<Type>();
 
         // Find concrete types that close the openRequestInterface and satisfy configuration filters
         var types = assembliesToScan
@@ -87,7 +87,7 @@ public static class ServiceRegistrar
 
                 foreach (var interfaceType in interfaceTypes)
                 {
-                    interfaces.Fill(interfaceType);
+                    interfaces.Add(interfaceType);
                 }
             }
             else
@@ -95,10 +95,12 @@ public static class ServiceRegistrar
                 genericConcretions.Add(type);
                 foreach (var interfaceType in interfaceTypes)
                 {
-                    genericInterfaces.Fill(interfaceType);
+                    genericInterfaces.Add(interfaceType);
                 }
             }
         }
+
+        var registeredServiceTypes = new HashSet<Type>(services.Select(d => d.ServiceType));
 
         // Register closed implementations with DI
         foreach (var @interface in interfaces)
@@ -110,6 +112,7 @@ public static class ServiceRegistrar
                 foreach (var type in exactMatches)
                 {
                     services.Add(new ServiceDescriptor(@interface, type, configuration.Lifetime));
+                    registeredServiceTypes.Add(@interface);
                 }
             }
             else
@@ -121,13 +124,16 @@ public static class ServiceRegistrar
 
                 foreach (var type in exactMatches)
                 {
-                    services.TryAdd(new ServiceDescriptor(@interface, type, configuration.Lifetime));
+                    if (registeredServiceTypes.Add(@interface))
+                    {
+                        services.Add(new ServiceDescriptor(@interface, type, configuration.Lifetime));
+                    }
                 }
             }
 
             if (!@interface.IsOpenGeneric())
             {
-                AddConcretionsThatCouldBeClosed(@interface, concretions, services, configuration);
+                AddConcretionsThatCouldBeClosed(@interface, concretions, services, configuration, registeredServiceTypes);
             }
         }
 
@@ -163,13 +169,16 @@ public static class ServiceRegistrar
     }
 
     // Register open generic handler types that can be closed with the interface's generic arguments.
-    private static void AddConcretionsThatCouldBeClosed(Type @interface, List<Type> concretions, IServiceCollection services, MediatRServiceConfiguration configuration)
+    private static void AddConcretionsThatCouldBeClosed(Type @interface, List<Type> concretions, IServiceCollection services, MediatRServiceConfiguration configuration, HashSet<Type> registeredServiceTypes)
     {
         foreach (var type in concretions.Where(x => x.IsOpenGeneric() && x.CouldCloseTo(@interface)))
         {
             try
             {
-                services.TryAdd(new ServiceDescriptor(@interface, type.MakeGenericType(@interface.GenericTypeArguments), configuration.Lifetime));
+                if (registeredServiceTypes.Add(@interface))
+                {
+                    services.Add(new ServiceDescriptor(@interface, type.MakeGenericType(@interface.GenericTypeArguments), configuration.Lifetime));
+                }
             }
             catch (ArgumentException)
             {
@@ -361,13 +370,6 @@ public static class ServiceRegistrar
     private static bool IsConcrete(this Type type)
     {
         return !type.IsAbstract && !type.IsInterface;
-    }
-
-    // Adds an item to a list if it does not already exist.
-    private static void Fill<T>(this IList<T> list, T value)
-    {
-        if (list.Contains(value)) return;
-        list.Add(value);
     }
 
     // Returns the types an assembly can actually load. Assembly.GetTypes() throws ReflectionTypeLoadException

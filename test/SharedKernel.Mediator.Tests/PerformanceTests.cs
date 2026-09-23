@@ -1,4 +1,4 @@
-﻿using FluentAssertions;
+using FluentAssertions;
 using Microsoft.Extensions.DependencyInjection;
 using SharedKernel.Abstractions.CQRS;
 using SharedKernel.DependencyInjection;
@@ -173,5 +173,102 @@ public class PerformanceTests
 
         // Performance should be reasonable for concurrent mixed requests
         stopwatch.ElapsedMilliseconds.Should().BeLessThan(3000);
+    }
+
+    [Fact]
+    public async Task Pipeline_With_Multiple_Behaviors_Should_Execute_Efficiently()
+    {
+        // Arrange
+        var services = new ServiceCollection();
+        services.AddSingleton<IRequestHandler<PingCommand, string>, PingCommandHandler>();
+        services.AddMediator(options =>
+        {
+            options.RegisterServicesFromAssembly(Assembly.GetExecutingAssembly());
+            options.AddOpenBehavior(typeof(Behaviors.ValidationBehavior<,>));
+            options.AddOpenBehavior(typeof(Behaviors.TimingBehavior<,>));
+        });
+
+        using var provider = services.BuildServiceProvider();
+        var mediator = provider.GetRequiredService<IMediator>();
+        const int requestCount = 1000;
+
+        // Warmup
+        await mediator.Send(new PingCommand("warmup"));
+
+        var stopwatch = Stopwatch.StartNew();
+        var tasks = new List<Task<string>>(requestCount);
+        for (int i = 0; i < requestCount; i++)
+        {
+            tasks.Add(mediator.Send(new PingCommand($"Pipeline-{i}")));
+        }
+
+        var results = await Task.WhenAll(tasks);
+        stopwatch.Stop();
+
+        results.Should().HaveCount(requestCount);
+        stopwatch.ElapsedMilliseconds.Should().BeLessThan(3000);
+    }
+
+    [Fact]
+    public async Task Mediator_Single_Behavior_Reentrant_Call_Succeeds()
+    {
+        // Arrange
+        var services = new ServiceCollection();
+        services.AddSingleton<IRequestHandler<ReentrantPingCommand, string>, ReentrantPingCommandHandler>();
+        services.AddSingleton<IRequestHandler<PingCommand, string>, PingCommandHandler>();
+        services.AddMediator(options =>
+        {
+            options.RegisterServicesFromAssembly(Assembly.GetExecutingAssembly());
+            options.AddOpenBehavior(typeof(Behaviors.TimingBehavior<,>));
+        });
+
+        using var provider = services.BuildServiceProvider();
+        var mediator = provider.GetRequiredService<IMediator>();
+
+        // Act
+        var response = await mediator.Send(new ReentrantPingCommand("Initial"));
+
+        // Assert
+        response.Should().Be("Nested: Pong: Nested");
+    }
+
+    [Fact]
+    public async Task Mediator_Void_Command_With_Single_Behavior_Succeeds()
+    {
+        // Arrange
+        var services = new ServiceCollection();
+        services.AddSingleton<IRequestHandler<TokenProbeCommand>, TokenProbeCommandHandler>();
+        services.AddMediator(options =>
+        {
+            options.RegisterServicesFromAssembly(Assembly.GetExecutingAssembly());
+            options.AddOpenBehavior(typeof(Behaviors.TimingBehavior<,>));
+        });
+
+        using var provider = services.BuildServiceProvider();
+        var mediator = provider.GetRequiredService<IMediator>();
+
+        // Act
+        Func<Task> act = async () => await mediator.Send(new TokenProbeCommand());
+
+        // Assert
+        await act.Should().NotThrowAsync();
+    }
+}
+
+public record ReentrantPingCommand(string Message) : IRequest<string>;
+
+public class ReentrantPingCommandHandler : IRequestHandler<ReentrantPingCommand, string>
+{
+    private readonly IMediator _mediator;
+
+    public ReentrantPingCommandHandler(IMediator mediator)
+    {
+        _mediator = mediator;
+    }
+
+    public async Task<string> Handle(ReentrantPingCommand request, CancellationToken cancellationToken)
+    {
+        var nested = await _mediator.Send(new PingCommand("Nested"), cancellationToken);
+        return $"Nested: {nested}";
     }
 }
