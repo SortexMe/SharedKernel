@@ -79,6 +79,8 @@ public class RequestHandlerWrapperImpl<TRequest, TResponse> : RequestHandlerWrap
 
     // Development Note:
     // Builds the middleware pipeline for the handler using the IPipelineBehavior interfaces.
+    // A behavior conventionally calls next() with no argument; that yields default(CancellationToken),
+    // which must be replaced by the token flowing through the pipeline or cancellation is lost.
     private static Func<TRequest, CancellationToken, Task<TResponse>> BuildPipeline(IPipelineBehavior<TRequest, TResponse>[] behaviors, IRequestHandler<TRequest, TResponse> handler)
     {
         Func<TRequest, CancellationToken, Task<TResponse>> pipeline = handler.Handle;
@@ -87,7 +89,7 @@ public class RequestHandlerWrapperImpl<TRequest, TResponse> : RequestHandlerWrap
         {
             var current = behaviors[i];
             var next = pipeline;
-            pipeline = (req, ct) => current.Handle(req, (ct) => next(req, ct), ct);
+            pipeline = (req, ct) => current.Handle(req, inner => next(req, inner == default ? ct : inner), ct);
         }
 
         return pipeline;
@@ -113,86 +115,32 @@ public class RequestHandlerWrapperImpl<TRequest> : RequestHandlerWrapper where T
         var behaviors = serviceProvider.GetServices<IPipelineBehavior<TRequest, Unit>>().ToArray();
 
         if (behaviors.Length == 0)
-            await handler.Handle((TRequest)request, cancellationToken);
+            await handler.Handle((TRequest)request, cancellationToken).ConfigureAwait(false);
         else
-            await BuildPipeline(behaviors, handler).Invoke((TRequest)request, cancellationToken);
+            await BuildPipeline(behaviors, handler).Invoke((TRequest)request, cancellationToken).ConfigureAwait(false);
 
         return Unit.Value;
     }
 
     // Development Note:
     // Builds a pipeline of command behaviors wrapping around the handler.
-    private static Func<TRequest, CancellationToken, Task> BuildPipeline(IPipelineBehavior<TRequest, Unit>[] behaviors, IRequestHandler<TRequest> handler)
+    // The innermost step awaits the handler's Task directly so a faulted or cancelled Task surfaces
+    // to the behaviors and the caller; a ContinueWith-based adapter would swallow it.
+    private static Func<TRequest, CancellationToken, Task<Unit>> BuildPipeline(IPipelineBehavior<TRequest, Unit>[] behaviors, IRequestHandler<TRequest> handler)
     {
-        Func<TRequest, CancellationToken, Task> pipeline = handler.Handle;
+        Func<TRequest, CancellationToken, Task<Unit>> pipeline = async (req, ct) =>
+        {
+            await handler.Handle(req, ct).ConfigureAwait(false);
+            return Unit.Value;
+        };
 
         for (var i = behaviors.Length - 1; i >= 0; i--)
         {
             var current = behaviors[i];
             var next = pipeline;
-            pipeline = async (req, ct) =>
-                await current.Handle(req, (ct) => next(req, ct).ContinueWith(_ => Unit.Value, ct), ct);
+            pipeline = (req, ct) => current.Handle(req, inner => next(req, inner == default ? ct : inner), ct);
         }
 
         return pipeline;
     }
 }
-
-
-#region Old Code
-//public abstract class RequestHandlerBase
-//{
-//    public abstract Task<object?> Handle(object request, IServiceProvider serviceProvider,
-//        CancellationToken cancellationToken);
-//}
-
-//public abstract class RequestHandlerWrapper<TResponse> : RequestHandlerBase
-//{
-//    public abstract Task<TResponse> Handle(IRequest<TResponse> request, IServiceProvider serviceProvider,
-//        CancellationToken cancellationToken);
-//}
-
-//public abstract class RequestHandlerWrapper : RequestHandlerBase
-//{
-//    public abstract Task<Unit> Handle(IRequest request, IServiceProvider serviceProvider, CancellationToken cancellationToken);
-//}
-
-//public class RequestHandlerWrapperImpl<TRequest, TResponse> : RequestHandlerWrapper<TResponse> where TRequest : IRequest<TResponse>
-//{
-//    public override async Task<object?> Handle(object request, IServiceProvider serviceProvider, CancellationToken cancellationToken) => await Handle((IRequest<TResponse>)request, serviceProvider, cancellationToken).ConfigureAwait(false);
-
-//    public override Task<TResponse> Handle(IRequest<TResponse> request, IServiceProvider serviceProvider, CancellationToken cancellationToken)
-//    {
-//        Task<TResponse> Handler(CancellationToken t = default) => serviceProvider.GetRequiredService<IRequestHandler<TRequest, TResponse>>()
-//            .Handle((TRequest)request, t == default ? cancellationToken : t);
-
-//        return serviceProvider
-//            .GetServices<IPipelineBehavior<TRequest, TResponse>>()
-//            .Reverse()
-//            .Aggregate((RequestHandlerDelegate<TResponse>)Handler,
-//                (next, pipeline) => (t) => pipeline.Handle((TRequest)request, next, t == default ? cancellationToken : t))();
-//    }
-//}
-
-//public class RequestHandlerWrapperImpl<TRequest> : RequestHandlerWrapper where TRequest : IRequest
-//{
-//    public override async Task<object?> Handle(object request, IServiceProvider serviceProvider, CancellationToken cancellationToken) => await Handle((IRequest)request, serviceProvider, cancellationToken).ConfigureAwait(false);
-
-//    public override Task<Unit> Handle(IRequest request, IServiceProvider serviceProvider, CancellationToken cancellationToken)
-//    {
-//        async Task<Unit> Handler(CancellationToken t = default)
-//        {
-//            await serviceProvider.GetRequiredService<IRequestHandler<TRequest>>()
-//                .Handle((TRequest)request, t == default ? cancellationToken : t);
-
-//            return Unit.Value;
-//        }
-
-//        return serviceProvider
-//            .GetServices<IPipelineBehavior<TRequest, Unit>>()
-//            .Reverse()
-//            .Aggregate((RequestHandlerDelegate<Unit>)Handler,
-//                (next, pipeline) => (t) => pipeline.Handle((TRequest)request, next, t == default ? cancellationToken : t))();
-//    }
-//}
-#endregion

@@ -13,6 +13,17 @@ public sealed class TenantConnection : EntityBase
     /// <summary>
     /// Gets or sets the connection string used to connect to the tenant's database.
     /// </summary>
+    /// <remarks>
+    /// <para>
+    /// This is a credential. This library does not depend on EF Core and therefore cannot encrypt the column
+    /// for you: map it through an encrypting <c>ValueConverter</c> (or provider-level column encryption such as
+    /// SQL Server Always Encrypted / pgcrypto) before persisting, and keep it out of query logs
+    /// (<c>EnableSensitiveDataLogging</c> must stay off in production).
+    /// </para>
+    /// <para>
+    /// Alternatively store a reference to a secret in a vault here and resolve the real connection string at runtime.
+    /// </para>
+    /// </remarks>
     public string ConnectionString { get; set; } = null!;
 
     /// <summary>

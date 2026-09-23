@@ -1,8 +1,6 @@
 ﻿using Microsoft.Extensions.Logging;
 using SharedKernel.Abstractions.CQRS;
-using SharedKernel.Common.DTOs;
 using System;
-using System.Collections.Generic;
 using System.Diagnostics;
 using System.Reflection;
 using System.Threading;
@@ -11,24 +9,32 @@ using System.Threading.Tasks;
 namespace SharedKernel.Mediator.Behaviors;
 
 /// <summary>
-/// Pipeline behavior for logging details about requests and responses.
-/// Logs request properties and timing information.
-/// 
-/// Note:
-/// This behavior uses reflection to log properties, which might impact performance.
-/// If you are using OpenTelemetry or another distributed tracing/logging mechanism,
-/// you may not need to adopt this logging behavior, as it can duplicate or interfere
-/// with telemetry instrumentation.
+/// Pipeline behavior that logs the name and duration of every request.
+/// <para>
+/// At <see cref="LogLevel.Information"/> only the request name and elapsed time are logged.
+/// At <see cref="LogLevel.Debug"/> the request's public properties are also logged, except any whose
+/// name suggests a secret (password, token, secret, key, credential, connection string), which are
+/// written as <c>***</c>. Override <see cref="ShouldRedact"/> to change that rule.
+/// </para>
+/// <para>
+/// Property logging uses reflection and can be a cost in high-throughput scenarios. If you already have
+/// OpenTelemetry or similar tracing, this behavior may duplicate what your instrumentation records.
+/// </para>
 /// </summary>
 /// <typeparam name="TRequest">The type of the request.</typeparam>
 /// <typeparam name="TResponse">The type of the response.</typeparam>
-public class LoggingBehavior<TRequest, TResponse> : IPipelineBehavior<TRequest, TResponse> where TRequest : IRequest<TResponse>
+public class LoggingBehavior<TRequest, TResponse> : IPipelineBehavior<TRequest, TResponse> where TRequest : notnull
 {
-    private readonly ILogger<TRequest> logger;
+    private static readonly string[] SecretMarkers =
+    [
+        "password", "passwd", "pwd", "secret", "token", "apikey", "api_key", "key", "credential", "connectionstring", "authorization",
+    ];
+
+    private readonly ILogger<TRequest> _logger;
 
     public LoggingBehavior(ILogger<TRequest> logger)
     {
-        this.logger = logger;
+        _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
     public async Task<TResponse> Handle(TRequest request, RequestHandlerDelegate<TResponse> next, CancellationToken cancellationToken)
@@ -36,33 +42,52 @@ public class LoggingBehavior<TRequest, TResponse> : IPipelineBehavior<TRequest, 
         if (request is null)
             throw new ArgumentNullException(nameof(request));
 
-        Stopwatch? stopwatch = null;
+        var requestName = typeof(TRequest).Name;
 
-        if (logger.IsEnabled(LogLevel.Information))
+        if (!_logger.IsEnabled(LogLevel.Information))
+            return await next(cancellationToken).ConfigureAwait(false);
+
+        _logger.LogInformation("Handling {RequestName}", requestName);
+
+        if (_logger.IsEnabled(LogLevel.Debug))
+            LogProperties(request);
+
+        var start = Stopwatch.GetTimestamp();
+
+        try
         {
-            logger.LogInformation("Handling {RequestName}", typeof(TRequest).Name);
+            return await next(cancellationToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            _logger.LogInformation("Handled {RequestName} in {ElapsedMilliseconds} ms", requestName, Stopwatch.GetElapsedTime(start).TotalMilliseconds);
+        }
+    }
 
-            // Reflection is used here to enumerate properties and their values.
-            // This could be a performance concern in high-throughput scenarios.
-            Type myType = request.GetType();
-            IList<PropertyInfo> props = myType.GetProperties();
-            foreach (PropertyInfo prop in props)
-            {
-                object? propValue = prop?.GetValue(request, null);
-                logger.LogInformation("Property {Property} : {@Value}", prop?.Name, propValue);
-            }
-
-            stopwatch = Stopwatch.StartNew();
+    /// <summary>
+    /// Decides whether a property's value should be replaced with <c>***</c> in the debug log.
+    /// The default matches common secret-bearing names case-insensitively.
+    /// </summary>
+    protected virtual bool ShouldRedact(PropertyInfo property)
+    {
+        foreach (var marker in SecretMarkers)
+        {
+            if (property.Name.Contains(marker, StringComparison.OrdinalIgnoreCase))
+                return true;
         }
 
-        var response = await next();
+        return false;
+    }
 
-        if (logger.IsEnabled(LogLevel.Information))
+    private void LogProperties(TRequest request)
+    {
+        foreach (var property in request.GetType().GetProperties(BindingFlags.Public | BindingFlags.Instance))
         {
-            logger.LogInformation("Handled {RequestName} in {ms} ms", typeof(TRequest).Name, stopwatch?.ElapsedMilliseconds);
-            stopwatch?.Stop();
-        }
+            if (property.GetIndexParameters().Length > 0)
+                continue;
 
-        return response;
+            object? value = ShouldRedact(property) ? "***" : property.GetValue(request);
+            _logger.LogDebug("Property {Property} : {@Value}", property.Name, value);
+        }
     }
 }

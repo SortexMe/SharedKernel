@@ -1,4 +1,4 @@
-using FluentAssertions;
+﻿using FluentAssertions;
 using Microsoft.Extensions.DependencyInjection;
 using SharedKernel.Abstractions.CQRS;
 using SharedKernel.DependencyInjection;
@@ -11,7 +11,7 @@ namespace SharedKernel.Mediator.Tests;
 public class PerformanceTests
 {
     private readonly IServiceProvider serviceProvider;
-    
+
     public PerformanceTests()
     {
         serviceProvider = BuildServiceProvider();
@@ -54,10 +54,10 @@ public class PerformanceTests
         // Assert
         results.Should().HaveCount(requestCount);
         results.Should().AllSatisfy(result => result.Should().StartWith("Pong: Load-"));
-        
+
         // Performance assertion - should complete 1000 requests in reasonable time
         stopwatch.ElapsedMilliseconds.Should().BeLessThan(5000); // 5 seconds max
-        
+
         // Calculate throughput
         var throughput = requestCount / stopwatch.Elapsed.TotalSeconds;
         throughput.Should().BeGreaterThan(100); // At least 100 requests per second
@@ -80,7 +80,7 @@ public class PerformanceTests
         // Act - Measure performance with cached handlers
         var stopwatch = Stopwatch.StartNew();
         var tasks = new List<Task<string>>();
-        
+
         for (int i = 0; i < measuredRequests; i++)
         {
             var command = new PingCommand($"Cached-{i}");
@@ -101,7 +101,7 @@ public class PerformanceTests
         // Arrange
         var mediator = serviceProvider.GetRequiredService<IMediator>();
         const int requestCount = 500;
-        
+
         // Get initial memory usage
         GC.Collect();
         GC.WaitForPendingFinalizers();
@@ -127,7 +127,7 @@ public class PerformanceTests
         // Assert
         var memoryIncrease = finalMemory - initialMemory;
         var memoryPerRequest = memoryIncrease / (double)requestCount;
-        
+
         // Memory increase should be reasonable (less than 1KB per request)
         memoryPerRequest.Should().BeLessThan(1024);
     }
@@ -163,9 +163,9 @@ public class PerformanceTests
         // Assert
         pingResults.Should().HaveCount(requestsPerType);
         complexResults.Should().HaveCount(requestsPerType);
-        
+
         pingResults.Should().AllSatisfy(result => result.Should().StartWith("Pong: Concurrent-Ping-"));
-        complexResults.Should().AllSatisfy(result => 
+        complexResults.Should().AllSatisfy(result =>
         {
             result.Success.Should().BeTrue();
             result.ProcessedCount.Should().Be(2);

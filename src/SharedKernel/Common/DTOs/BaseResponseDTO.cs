@@ -1,6 +1,8 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Net;
+using System.Text.Json.Serialization;
 
 namespace SharedKernel.Common.DTOs;
 
@@ -8,77 +10,83 @@ namespace SharedKernel.Common.DTOs;
 /// Represents a standard response DTO indicating the outcome of an operation.
 /// Includes support for error reporting, status, and traceability.
 /// </summary>
+/// <remarks>
+/// Instances are created through the factory methods. The type round-trips through System.Text.Json,
+/// so a service consuming another service's response can deserialize it directly.
+/// </remarks>
 public record BaseResponseDTO
 {
-    // Backing list for validation errors.
-    private readonly List<DTOValidationError> errors = new();
+    internal const string SuccessMessage = "Your request has been successfully processed";
+    internal const string ErrorPrefix = "An error occurred while processing your request:";
 
-    // Private constructor to enforce use of factory methods.
+    [JsonConstructor]
     private BaseResponseDTO()
     {
     }
 
-    private BaseResponseDTO(DTOValidationError[] errors)
-    {
-        this.errors.AddRange(errors);
-    }
-
     /// <summary>
-    /// Creates a success response with a default success message.
+    /// Creates a success response with a default success message and HTTP 200.
     /// </summary>
-    public static BaseResponseDTO WithSuccess()
+    public static BaseResponseDTO WithSuccess() => new()
     {
-        var response = new BaseResponseDTO();
-        response.Message = "Your request has been successfully processed";
-        return response;
-    }
+        Message = SuccessMessage,
+        StatusCode = (int)HttpStatusCode.OK,
+    };
 
     /// <summary>
     /// Creates an error response containing a single validation error.
     /// </summary>
     /// <param name="error">The validation error to include.</param>
-    public static BaseResponseDTO WithError(DTOValidationError error)
-    {
-        var response = new BaseResponseDTO([error]);
-        response.Message = $"An error occurred while processing your request:{Environment.NewLine}{error.ErrorMessage}";
-        return response;
-    }
+    public static BaseResponseDTO WithError(DTOValidationError error) => WithErrors([error]);
 
     /// <summary>
     /// Creates an error response containing multiple validation errors.
     /// </summary>
     /// <param name="errors">The array of validation errors.</param>
-    public static BaseResponseDTO WithErrors(DTOValidationError[] errors)
+    public static BaseResponseDTO WithErrors(DTOValidationError[] errors) => new()
     {
-        var response = new BaseResponseDTO(errors);
-        response.Message = $"An error occurred while processing your request:{Environment.NewLine}{string.Join(Environment.NewLine, errors.Where(m => !string.IsNullOrWhiteSpace(m.ErrorMessage)).Select((m, index) => $"{index + 1}. {m.ErrorMessage}"))}";
-        return response;
-    }
+        Errors = errors ?? throw new ArgumentNullException(nameof(errors)),
+        Message = FormatErrorMessage(errors),
+        StatusCode = (int)HttpStatusCode.BadRequest,
+    };
 
     /// <summary>
     /// Indicates whether the response represents a successful operation.
     /// </summary>
-    public bool IsSuccess => Errors == null || Errors.Count == 0;
+    public bool IsSuccess => Errors.Count == 0;
 
     /// <summary>
-    /// Gets the trace identifier related to this response.
+    /// Gets or sets the trace identifier related to this response.
     /// </summary>
     public string? TraceId { get; set; }
 
     /// <summary>
-    /// Gets the HTTP status code associated with the response.
+    /// Gets or sets the HTTP status code associated with the response.
     /// </summary>
     public int StatusCode { get; set; }
 
     /// <summary>
-    /// Gets the descriptive message for this response.
+    /// Gets or sets the descriptive message for this response.
     /// </summary>
-    public string Message { get; set; } = null!;
+    public string Message { get; set; } = string.Empty;
 
     /// <summary>
     /// Gets the collection of validation errors.
     /// </summary>
-    public IReadOnlyCollection<DTOValidationError> Errors => errors;
+    [JsonInclude]
+    public IReadOnlyCollection<DTOValidationError> Errors { get; private set; } = [];
+
+    internal static string FormatErrorMessage(IReadOnlyCollection<DTOValidationError> errors)
+    {
+        if (errors.Count == 1)
+            return $"{ErrorPrefix}{Environment.NewLine}{errors.First().ErrorMessage}";
+
+        var lines = errors
+            .Where(m => !string.IsNullOrWhiteSpace(m.ErrorMessage))
+            .Select((m, index) => $"{index + 1}. {m.ErrorMessage}");
+
+        return $"{ErrorPrefix}{Environment.NewLine}{string.Join(Environment.NewLine, lines)}";
+    }
 }
 
 /// <summary>
@@ -87,80 +95,71 @@ public record BaseResponseDTO
 /// <typeparam name="T">The type of the data returned in the response.</typeparam>
 public record BaseResponseDTO<T>
 {
-    private readonly List<DTOValidationError> errors = new();
-
-    private BaseResponseDTO(T data)
+    [JsonConstructor]
+    private BaseResponseDTO()
     {
-        Data = data;
-    }
-
-    private BaseResponseDTO(T data, DTOValidationError[] errors) : this(data)
-    {
-        this.errors.AddRange(errors);
     }
 
     /// <summary>
-    /// Creates a success response wrapping the specified data.
+    /// Creates a success response wrapping the specified data, with HTTP 200.
     /// </summary>
     /// <param name="data">The data to return.</param>
-    public static BaseResponseDTO<T> WithSuccess(T data)
+    public static BaseResponseDTO<T> WithSuccess(T data) => new()
     {
-        var response = new BaseResponseDTO<T>(data);
-        response.Message = "Your request has been successfully processed";
-        return response;
-    }
+        Data = data,
+        Message = BaseResponseDTO.SuccessMessage,
+        StatusCode = (int)HttpStatusCode.OK,
+    };
 
     /// <summary>
     /// Creates an error response wrapping the data and a single validation error.
     /// </summary>
     /// <param name="data">The data to return.</param>
     /// <param name="error">The validation error to include.</param>
-    public static BaseResponseDTO<T> WithError(T data, DTOValidationError error)
-    {
-        var response = new BaseResponseDTO<T>(data, [error]);
-        response.Message = $"An error occurred while processing your request:{Environment.NewLine}{error.ErrorMessage}";
-        return response;
-    }
+    public static BaseResponseDTO<T> WithError(T data, DTOValidationError error) => WithErrors(data, [error]);
 
     /// <summary>
     /// Creates an error response wrapping the data and multiple validation errors.
     /// </summary>
     /// <param name="data">The data to return.</param>
     /// <param name="errors">The array of validation errors.</param>
-    public static BaseResponseDTO<T> WithErrors(T data, DTOValidationError[] errors)
+    public static BaseResponseDTO<T> WithErrors(T data, DTOValidationError[] errors) => new()
     {
-        var response = new BaseResponseDTO<T>(data, errors);
-        response.Message = $"An error occurred while processing your request:{Environment.NewLine}{string.Join(Environment.NewLine, errors.Where(m => !string.IsNullOrWhiteSpace(m.ErrorMessage)).Select((m, index) => $"{index + 1}. {m.ErrorMessage}"))}";
-        return response;
-    }
+        Data = data,
+        Errors = errors ?? throw new ArgumentNullException(nameof(errors)),
+        Message = BaseResponseDTO.FormatErrorMessage(errors),
+        StatusCode = (int)HttpStatusCode.BadRequest,
+    };
 
     /// <summary>
     /// Indicates whether the response represents a successful operation.
     /// </summary>
-    public bool IsSuccess => Errors == null || Errors.Count == 0;
+    public bool IsSuccess => Errors.Count == 0;
 
     /// <summary>
-    /// Gets the trace identifier related to this response.
+    /// Gets or sets the trace identifier related to this response.
     /// </summary>
     public string? TraceId { get; set; }
 
     /// <summary>
-    /// Gets the HTTP status code associated with the response.
+    /// Gets or sets the HTTP status code associated with the response.
     /// </summary>
     public int StatusCode { get; set; }
 
     /// <summary>
-    /// Gets the descriptive message for this response.
+    /// Gets or sets the descriptive message for this response.
     /// </summary>
-    public string Message { get; set; } = null!;
+    public string Message { get; set; } = string.Empty;
 
     /// <summary>
-    /// Gets the data returned in the response.
+    /// Gets the data returned in the response. May be default when the response carries only errors.
     /// </summary>
-    public T Data { get; private init; }
+    [JsonInclude]
+    public T? Data { get; private set; }
 
     /// <summary>
     /// Gets the collection of validation errors.
     /// </summary>
-    public IReadOnlyCollection<DTOValidationError> Errors => errors;
+    [JsonInclude]
+    public IReadOnlyCollection<DTOValidationError> Errors { get; private set; } = [];
 }

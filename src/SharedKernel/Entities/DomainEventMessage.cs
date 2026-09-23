@@ -1,5 +1,7 @@
 ﻿using SharedKernel.Enumerations;
 using System;
+using System.ComponentModel;
+using System.ComponentModel.DataAnnotations.Schema;
 
 namespace SharedKernel.Entities;
 
@@ -36,7 +38,15 @@ public class DomainEventMessage
     /// <summary>
     /// Gets the date and time when the domain event originally occurred.
     /// </summary>
-    public DateTimeOffset OccurranceTime { get; private set; } = DateTimeOffset.UtcNow;
+    public DateTimeOffset OccurrenceTime { get; private set; } = DateTimeOffset.UtcNow;
+
+    /// <summary>
+    /// Old misspelled name of <see cref="OccurrenceTime"/>. Not mapped; will be removed in 3.0.
+    /// </summary>
+    [Obsolete("Renamed to OccurrenceTime. This alias will be removed in 3.0.", DiagnosticId = "SK0001")]
+    [EditorBrowsable(EditorBrowsableState.Never)]
+    [NotMapped]
+    public DateTimeOffset OccurranceTime => OccurrenceTime;
 
     /// <summary>
     /// Gets the last date and time this event was processed.
@@ -51,7 +61,7 @@ public class DomainEventMessage
     /// <summary>
     /// Gets the number of times this domain event message has been processed.
     /// </summary>
-    public int? ProcessedTimes { get; private set; }
+    public int? ProcessedTimes { get; private set; } = 0;
 
     /// <summary>
     /// Gets the current processing status of the domain event message.
@@ -92,7 +102,7 @@ public class DomainEventMessage
     {
         Status = DomainEventStatus.Skipped;
         LastProcessedTime = DateTimeOffset.UtcNow;
-        ProcessedTimes++;
+        ProcessedTimes = (ProcessedTimes ?? 0) + 1; // rows persisted before the counter was initialised hold null
     }
 
     /// <summary>
@@ -107,7 +117,7 @@ public class DomainEventMessage
     {
         Status = DomainEventStatus.Completed;
         LastProcessedTime = DateTimeOffset.UtcNow;
-        ProcessedTimes++;
+        ProcessedTimes = (ProcessedTimes ?? 0) + 1; // rows persisted before the counter was initialised hold null
     }
 
     /// <summary>
@@ -122,7 +132,7 @@ public class DomainEventMessage
     {
         Status = DomainEventStatus.Failed;
         LastProcessedTime = DateTimeOffset.UtcNow;
-        ProcessedTimes++;
+        ProcessedTimes = (ProcessedTimes ?? 0) + 1; // rows persisted before the counter was initialised hold null
         Error = error;
     }
 }

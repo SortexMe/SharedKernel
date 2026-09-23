@@ -5,7 +5,15 @@
 /// </summary>
 /// <param name="AccessToken">The JWT or access token issued for authentication.</param>
 /// <param name="RefreshToken">The refresh token used to obtain new access tokens.</param>
-public record TokenResponseDTO(string AccessToken, string RefreshToken);
+public record TokenResponseDTO(string AccessToken, string RefreshToken)
+{
+    // Both members are bearer secrets; never let them reach a log through ToString().
+    protected virtual bool PrintMembers(System.Text.StringBuilder builder)
+    {
+        builder.Append("AccessToken = ***, RefreshToken = ***");
+        return true;
+    }
+}
 
 // Development Note:
 // This DTO is typically returned from authentication endpoints after a successful login or token refresh.

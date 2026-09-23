@@ -9,48 +9,49 @@ namespace SharedKernel.ValueObjects;
 /// </summary>
 /// <remarks>
 /// Implements equality based on the values of its components.
-/// Use this class for modeling immutable address information within aggregates.
+/// Properties are init-only: build an instance with an object initializer and never mutate it, since
+/// equality and hashing are derived from its values.
 /// </remarks>
 public class Address : ValueObject
 {
     /// <summary>
-    /// Gets or sets the first line of the address.
+    /// Gets the first line of the address.
     /// </summary>
-    public string? AddressLine1 { get; set; }
+    public string? AddressLine1 { get; init; }
 
     /// <summary>
-    /// Gets or sets the second line of the address.
+    /// Gets the second line of the address.
     /// </summary>
-    public string? AddressLine2 { get; set; }
+    public string? AddressLine2 { get; init; }
 
     /// <summary>
-    /// Gets or sets the city name.
+    /// Gets the city name.
     /// </summary>
-    public string? City { get; set; }
+    public string? City { get; init; }
 
     /// <summary>
-    /// Gets or sets the state, region, or province.
+    /// Gets the state, region, or province.
     /// </summary>
-    public string? State { get; set; }
+    public string? State { get; init; }
 
     /// <summary>
-    /// Gets or sets the postal or ZIP code.
+    /// Gets the postal or ZIP code.
     /// </summary>
-    public string? PostalCode { get; set; }
+    public string? PostalCode { get; init; }
 
     /// <summary>
-    /// Gets or sets the identifier for the country.
+    /// Gets the identifier for the country.
     /// </summary>
     /// <remarks>
     /// This should correspond to a valid country record in the system or ISO code.
     /// </remarks>
-    public Guid CountryId { get; set; }
+    public Guid CountryId { get; init; }
 
     /// <summary>
     /// Returns an enumeration of atomic values used for equality comparisons.
     /// </summary>
     /// <returns>Sequence of components that define value-based equality for this address.</returns>
-    protected override IEnumerable<object> GetEqualityComponents()
+    protected override IEnumerable<object?> GetEqualityComponents()
     {
         yield return AddressLine1 ?? string.Empty;
         yield return AddressLine2 ?? string.Empty;

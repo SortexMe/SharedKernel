@@ -1,4 +1,6 @@
-﻿namespace SharedKernel.Options;
+﻿using System.Text;
+
+namespace SharedKernel.Options;
 
 /// <summary>
 /// Represents the connection configuration for a message broker host.
@@ -12,9 +14,9 @@ public sealed record MessageBrokerHost
 
     /// <summary>
     /// Gets the port used to connect to the message broker.
-    /// Defaults to <c>5674</c>, which is typically used for secure AMQP connections (AMQPS).
+    /// Defaults to <c>5671</c>, the standard AMQPS (TLS) port; plain AMQP uses <c>5672</c>.
     /// </summary>
-    public int Port { get; init; } = 5674;
+    public int Port { get; init; } = 5671;
 
     /// <summary>
     /// Gets the username used for authenticating with the message broker.
@@ -25,4 +27,14 @@ public sealed record MessageBrokerHost
     /// Gets the password used for authenticating with the message broker.
     /// </summary>
     public required string Password { get; init; }
+
+    // Sealed records get a private PrintMembers; keep the password out of ToString().
+    private bool PrintMembers(StringBuilder builder)
+    {
+        builder.Append("HostName = ").Append(HostName)
+               .Append(", Port = ").Append(Port)
+               .Append(", UserName = ").Append(UserName)
+               .Append(", Password = ***");
+        return true;
+    }
 }

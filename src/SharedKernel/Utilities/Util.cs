@@ -51,8 +51,11 @@ public static class Util
     /// </remarks>
     public static IEnumerable<Type> GetAllDomainEventTypes(Assembly[] assemblies)
     {
+        if (assemblies is null)
+            throw new ArgumentNullException(nameof(assemblies));
+
         return assemblies
-            .SelectMany(m => m.GetTypes())
+            .SelectMany(SharedKernel.Mediator.ServiceRegistrar.GetLoadableTypes)
             .Where(m =>
                 m is { IsClass: true, IsAbstract: false } &&
                 typeof(DomainEventBase).IsAssignableFrom(m) &&

@@ -1,6 +1,5 @@
-﻿using SharedKernel.Abstractions.CQRS;
+using SharedKernel.Abstractions.CQRS;
 using System;
-using System.Collections.Concurrent;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -9,26 +8,45 @@ namespace SharedKernel.Mediator;
 
 /// <summary>
 /// A mediator implementation that handles sending requests and invoking the appropriate request handlers.
-/// Uses a concurrent dictionary cache to store handler wrappers for request types for performance.
 /// </summary>
+/// <remarks>
+/// Handler wrappers are resolved through a <see cref="RequestHandlerWrapperCache"/> so the reflection that
+/// builds them happens once per (request, response) pair rather than per send. <see cref="ServiceRegistrar"/>
+/// registers that cache as a singleton, giving it container lifetime.
+/// </remarks>
 public class Mediator : IMediator
 {
     private readonly IServiceProvider _serviceProvider;
-
-    /// <summary>
-    /// Cache of request handlers keyed by request type.
-    /// This dictionary stores wrappers around request handlers to avoid repeated reflection or
-    /// handler resolution on every request dispatch.
-    /// </summary>
-    private static readonly ConcurrentDictionary<Type, RequestHandlerBase> _requestHandlers = new();
+    private readonly RequestHandlerWrapperCache _wrappers;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="Mediator"/> class.
     /// </summary>
     /// <param name="serviceProvider">Service provider. Can be a scoped or root provider.</param>
+    /// <remarks>
+    /// The wrapper cache is taken from <paramref name="serviceProvider"/>. When the provider has no
+    /// <see cref="RequestHandlerWrapperCache"/> registered — which happens only if this type is constructed
+    /// without going through <c>AddMediator</c> — a private cache is used instead. That is correct but slower,
+    /// because it is not shared with other mediator instances.
+    /// </remarks>
+    /// <exception cref="ArgumentNullException">Thrown when <paramref name="serviceProvider"/> is null.</exception>
     public Mediator(IServiceProvider serviceProvider)
     {
-        _serviceProvider = serviceProvider;
+        _serviceProvider = serviceProvider ?? throw new ArgumentNullException(nameof(serviceProvider));
+        _wrappers = serviceProvider.GetService(typeof(RequestHandlerWrapperCache)) as RequestHandlerWrapperCache
+            ?? new RequestHandlerWrapperCache();
+    }
+
+    /// <summary>
+    /// Initializes a new instance of the <see cref="Mediator"/> class with an explicit wrapper cache.
+    /// </summary>
+    /// <param name="serviceProvider">Service provider. Can be a scoped or root provider.</param>
+    /// <param name="wrapperCache">The cache to dispatch through.</param>
+    /// <exception cref="ArgumentNullException">Thrown when either argument is null.</exception>
+    public Mediator(IServiceProvider serviceProvider, RequestHandlerWrapperCache wrapperCache)
+    {
+        _serviceProvider = serviceProvider ?? throw new ArgumentNullException(nameof(serviceProvider));
+        _wrappers = wrapperCache ?? throw new ArgumentNullException(nameof(wrapperCache));
     }
 
     /// <summary>
@@ -44,13 +62,7 @@ public class Mediator : IMediator
         if (request == null)
             throw new ArgumentNullException(nameof(request));
 
-        // Get or create a cached request handler wrapper for the specific request type
-        var handler = (RequestHandlerWrapper<TResponse>)_requestHandlers.GetOrAdd(request.GetType(), static requestType =>
-        {
-            var wrapperType = typeof(RequestHandlerWrapperImpl<,>).MakeGenericType(requestType, typeof(TResponse));
-            var wrapper = Activator.CreateInstance(wrapperType) ?? throw new InvalidOperationException($"Could not create wrapper type for {requestType}");
-            return (RequestHandlerBase)wrapper;
-        });
+        var handler = (RequestHandlerWrapper<TResponse>)_wrappers.GetOrAdd(request.GetType(), typeof(TResponse));
 
         return handler.Handle(request, _serviceProvider, cancellationToken);
     }
@@ -68,13 +80,7 @@ public class Mediator : IMediator
         if (request == null)
             throw new ArgumentNullException(nameof(request));
 
-        var handler = (RequestHandlerWrapper)_requestHandlers.GetOrAdd(request.GetType(), static requestType =>
-        {
-            var wrapperType = typeof(RequestHandlerWrapperImpl<>).MakeGenericType(requestType);
-            var wrapper = Activator.CreateInstance(wrapperType)
-                ?? throw new InvalidOperationException($"Could not create wrapper type for {requestType}");
-            return (RequestHandlerBase)wrapper;
-        });
+        var handler = (RequestHandlerWrapper)_wrappers.GetOrAdd(request.GetType(), RequestHandlerWrapperCache.VoidResponse);
 
         return handler.Handle(request, _serviceProvider, cancellationToken);
     }
@@ -92,34 +98,18 @@ public class Mediator : IMediator
         if (request == null)
             throw new ArgumentNullException(nameof(request));
 
-        var handler = _requestHandlers.GetOrAdd(request.GetType(), static requestType =>
-        {
-            Type wrapperType;
+        var requestType = request.GetType();
 
-            var requestInterfaceType = requestType.GetInterfaces()
-                .FirstOrDefault(static i => i.IsGenericType && i.GetGenericTypeDefinition() == typeof(IRequest<>));
+        // Resolve the declared response type so the cache key matches the strongly-typed overloads.
+        var responseType = requestType.GetInterfaces()
+            .FirstOrDefault(static i => i.IsGenericType && i.GetGenericTypeDefinition() == typeof(IRequest<>))
+            ?.GetGenericArguments()[0];
 
-            if (requestInterfaceType is null)
-            {
-                requestInterfaceType = requestType.GetInterfaces().FirstOrDefault(static i => i == typeof(IRequest));
+        if (responseType is null && !typeof(IRequest).IsAssignableFrom(requestType))
+            throw new ArgumentException($"{requestType.Name} does not implement {nameof(IRequest)}", nameof(request));
 
-                if (requestInterfaceType is null)
-                    throw new ArgumentException($"{requestType.Name} does not implement {nameof(IRequest)}", nameof(request));
+        var handler = _wrappers.GetOrAdd(requestType, responseType ?? RequestHandlerWrapperCache.VoidResponse);
 
-                wrapperType = typeof(RequestHandlerWrapperImpl<>).MakeGenericType(requestType);
-            }
-            else
-            {
-                var responseType = requestInterfaceType.GetGenericArguments()[0];
-                wrapperType = typeof(RequestHandlerWrapperImpl<,>).MakeGenericType(requestType, responseType);
-            }
-
-            var wrapper = Activator.CreateInstance(wrapperType) ?? throw new InvalidOperationException($"Could not create wrapper for type {requestType}");
-
-            return (RequestHandlerBase)wrapper;
-        });
-
-        // Call via dynamic dispatch to avoid reflection overhead, improving performance.
         return handler.Handle(request, _serviceProvider, cancellationToken);
     }
 }

@@ -2,9 +2,9 @@
 
 SharedKernel is a reusable, open-source .NET library of foundational building blocks for Domain-Driven Design (DDD), Clean Architecture, and CQRS. It provides a lightweight mediator, pipeline behaviors, domain event primitives, base entities, standardized DTOs, domain exceptions, and utilities that reduce boilerplate and promote consistent patterns across services.
 
-- Target framework: `net10.0`
+- Target frameworks: `net8.0`, `net10.0`
 - Package id: `Sortex.SharedKernel`
-- Current package version in this repository: `1.0.0.117`
+- Current package version in this repository: `2.0.0`
 - License: `MIT` (see `LICENSE`)
 
 ---
@@ -85,14 +85,12 @@ var services = new ServiceCollection();
 // Optional: register individual handlers
 // services.AddSingleton<IRequestHandler<PingCommand, string>, PingCommandHandler>();
 
-// Register mediator and scan handlers/behaviors from the provided assembly
+// Register mediator, scan handlers from the provided assembly, and add behaviors in the order they should run
 services.AddMediator(options =>
 {
  options.RegisterServicesFromAssembly(Assembly.GetExecutingAssembly());
+ options.AddOpenBehavior(typeof(LoggingBehavior<,>));
 });
-
-// Register pipeline behaviors explicitly if needed
-services.AddTransient(typeof(IPipelineBehavior<,>), typeof(LoggingBehavior<,>));
 
 var provider = services.BuildServiceProvider();
 ```
@@ -123,7 +121,13 @@ var result = await mediator.Send(new PingCommand("Hello"));
 
 ###3) Use pipeline behaviors
 
-Register `LoggingBehavior<TRequest, TResponse>` to log request properties and handling time. Example registration is shown above. The behavior logs each public property via reflection and timing information using `ILogger<TRequest>`.
+Register `LoggingBehavior<TRequest, TResponse>` to log request names and handling time through `ILogger<TRequest>`. Example registration is shown above.
+
+- At `Information` it logs only the request name and elapsed time.
+- At `Debug` it also logs each public property via reflection. Properties whose names look like secrets (`Password`, `Token`, `Secret`, `Key`, `ConnectionString`, ...) are written as `***`; override `ShouldRedact` to change the rule.
+- It applies to both `IRequest<TResponse>` requests and void `IRequest` commands.
+
+Writing your own behavior: call `next()` with no arguments and the mediator forwards the caller's `CancellationToken` for you, or pass a token explicitly to substitute one.
 
 ###4) Use `BaseResponseDTO` and domain exceptions
 
@@ -144,9 +148,14 @@ BaseResponseDTO resp = domainEx; // resp.StatusCode =400 and errors populated
 
 The repository contains `UserDomainModel` that demonstrates realistic domain logic and domain events. Common operations include:
 
-- `UserDomainModel.ForgetPassword()` — generates a reset token, registers a `UserPasswordForgotten` domain event and updates the user entity.
-- `UserDomainModel.ResetPassword(token, passwordHash)` — validates token, updates password and emits `UserPasswordReset` event.
-- `UserDomainModel.LoginUser(isPasswordValid, newRefreshToken, refreshTokenDuration)` — validates user state and issues a refresh token; throws `DomainException` on validation failures.
+- `UserDomainModel.Create(dto, passwordHash)` — builds the user, stores a hashed e-mail confirmation token, and raises `UserCreated` carrying the raw token to send to the user.
+- `UserDomainModel.ConfirmEmail(token)` — validates the raw token, marks the e-mail confirmed, and consumes the token.
+- `UserDomainModel.ForgetPassword()` — stores a hashed reset token, raises `UserPasswordForgotten` carrying the raw token, and updates the user entity.
+- `UserDomainModel.ResetPassword(token, passwordHash)` — validates the raw token (newest unexpired one only), updates the password, consumes every outstanding reset token, and emits `UserPasswordReset`.
+- `UserDomainModel.LoginUser(isPasswordValid, newRefreshToken, refreshTokenDuration)` — enforces e-mail confirmation and a 15-minute lockout after 5 failures (`LockoutEnabled` is honoured), then issues a refresh token; throws `DomainException` on validation failures.
+- `UserDomainModel.RefreshToken(tokenResponse, newRefreshToken, refreshTokenDuration)` — rotates the refresh token after a constant-time comparison with the stored one.
+
+Single-use tokens are stored as SHA-512 hashes; only the domain event carries the raw value. `TokenGenerator.HashToken` / `TokenGenerator.VerifyToken` are public if you need the same scheme elsewhere.
 
 Usage sketch:
 
@@ -154,7 +163,7 @@ Usage sketch:
 // Assume userRepository and an existing ApplicationUser instance
 var domainModel = new UserDomainModel(user, userRepository);
 
-domainModel.ForgetPassword(); // registers event and saves token
+domainModel.ForgetPassword(); // registers UserPasswordForgotten (with the raw token) and stores its hash
 
 try
 {

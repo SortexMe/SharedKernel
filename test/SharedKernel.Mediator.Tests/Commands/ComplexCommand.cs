@@ -1,4 +1,4 @@
-using SharedKernel.Abstractions.CQRS;
+﻿using SharedKernel.Abstractions.CQRS;
 
 namespace SharedKernel.Mediator.Tests.Commands;
 

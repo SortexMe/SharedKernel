@@ -17,24 +17,6 @@ namespace SharedKernel.Mediator;
 /// </summary>
 public static class ServiceRegistrar
 {
-    private static int MaxGenericTypeParameters;
-    private static int MaxTypesClosing;
-    private static int MaxGenericTypeRegistrations;
-    private static int RegistrationTimeout;
-
-    /// <summary>
-    /// Sets limits for generic request handler registration such as maximum number of generic parameters,
-    /// types that can close those parameters, total registrations allowed, and registration timeout.
-    /// </summary>
-    /// <param name="configuration">Configuration containing the registration limits.</param>
-    public static void SetGenericRequestHandlerRegistrationLimitations(MediatRServiceConfiguration configuration)
-    {
-        MaxGenericTypeParameters = configuration.MaxGenericTypeParameters;
-        MaxTypesClosing = configuration.MaxTypesClosing;
-        MaxGenericTypeRegistrations = configuration.MaxGenericTypeRegistrations;
-        RegistrationTimeout = configuration.RegistrationTimeout;
-    }
-
     /// <summary>
     /// Adds MediatR request handler classes from specified assemblies, with a timeout to prevent long registration times.
     /// Throws TimeoutException if registration exceeds the configured timeout.
@@ -43,16 +25,18 @@ public static class ServiceRegistrar
     /// <param name="configuration">Configuration specifying assemblies and registration options.</param>
     public static void AddMediatRClassesWithTimeout(IServiceCollection services, MediatRServiceConfiguration configuration)
     {
-        using (var cts = new CancellationTokenSource(RegistrationTimeout))
+        // A timeout of 0 is documented as "disabled"; CancellationTokenSource(0) would fire immediately.
+        var timeout = configuration.RegistrationTimeout > 0 ? configuration.RegistrationTimeout : Timeout.Infinite;
+
+        using var cts = new CancellationTokenSource(timeout);
+
+        try
         {
-            try
-            {
-                AddMediatRClasses(services, configuration, cts.Token);
-            }
-            catch (OperationCanceledException)
-            {
-                throw new TimeoutException("The generic handler registration process timed out.");
-            }
+            AddMediatRClasses(services, configuration, cts.Token);
+        }
+        catch (OperationCanceledException) when (cts.IsCancellationRequested)
+        {
+            throw new TimeoutException("The generic handler registration process timed out.");
         }
     }
 
@@ -86,7 +70,7 @@ public static class ServiceRegistrar
 
         // Find concrete types that close the openRequestInterface and satisfy configuration filters
         var types = assembliesToScan
-            .SelectMany(a => a.DefinedTypes)
+            .SelectMany(GetLoadableTypes)
             .Where(t => (!t.ContainsGenericParameters || configuration.RegisterGenericHandlers)
                         && t.IsConcrete()
                         && t.FindInterfacesThatClose(openRequestInterface).Any()
@@ -125,7 +109,7 @@ public static class ServiceRegistrar
             {
                 foreach (var type in exactMatches)
                 {
-                    services.AddScoped(@interface, type);
+                    services.Add(new ServiceDescriptor(@interface, type, configuration.Lifetime));
                 }
             }
             else
@@ -137,13 +121,13 @@ public static class ServiceRegistrar
 
                 foreach (var type in exactMatches)
                 {
-                    services.TryAddScoped(@interface, type);
+                    services.TryAdd(new ServiceDescriptor(@interface, type, configuration.Lifetime));
                 }
             }
 
             if (!@interface.IsOpenGeneric())
             {
-                AddConcretionsThatCouldBeClosed(@interface, concretions, services);
+                AddConcretionsThatCouldBeClosed(@interface, concretions, services, configuration);
             }
         }
 
@@ -151,7 +135,7 @@ public static class ServiceRegistrar
         foreach (var @interface in genericInterfaces)
         {
             var exactMatches = genericConcretions.Where(x => x.CanBeCastTo(@interface)).ToArray();
-            AddAllConcretionsThatClose(@interface, exactMatches, services, assembliesToScan, cancellationToken);
+            AddAllConcretionsThatClose(@interface, exactMatches, services, assembliesToScan, configuration, cancellationToken);
         }
     }
 
@@ -179,17 +163,17 @@ public static class ServiceRegistrar
     }
 
     // Register open generic handler types that can be closed with the interface's generic arguments.
-    private static void AddConcretionsThatCouldBeClosed(Type @interface, List<Type> concretions, IServiceCollection services)
+    private static void AddConcretionsThatCouldBeClosed(Type @interface, List<Type> concretions, IServiceCollection services, MediatRServiceConfiguration configuration)
     {
         foreach (var type in concretions.Where(x => x.IsOpenGeneric() && x.CouldCloseTo(@interface)))
         {
             try
             {
-                services.TryAddScoped(@interface, type.MakeGenericType(@interface.GenericTypeArguments));
+                services.TryAdd(new ServiceDescriptor(@interface, type.MakeGenericType(@interface.GenericTypeArguments), configuration.Lifetime));
             }
-            catch (Exception)
+            catch (ArgumentException)
             {
-                // Ignore failures for generic type construction
+                // The interface's type arguments violate the concretion's generic constraints; it cannot close here.
             }
         }
     }
@@ -214,7 +198,7 @@ public static class ServiceRegistrar
     }
 
     // Retrieve all concrete request types that satisfy generic constraints of the open generic handler implementation.
-    private static Type[]? GetConcreteRequestTypes(Type openRequestHandlerInterface, Type openRequestHandlerImplementation, IEnumerable<Assembly> assembliesToScan, CancellationToken cancellationToken)
+    private static Type[]? GetConcreteRequestTypes(Type openRequestHandlerInterface, Type openRequestHandlerImplementation, IEnumerable<Assembly> assembliesToScan, MediatRServiceConfiguration configuration, CancellationToken cancellationToken)
     {
         var constraintsForEachParameter = openRequestHandlerImplementation
             .GetGenericArguments()
@@ -223,7 +207,7 @@ public static class ServiceRegistrar
 
         var typesThatCanCloseForEachParameter = constraintsForEachParameter
             .Select(constraints => assembliesToScan
-                .SelectMany(assembly => assembly.GetTypes())
+                .SelectMany(GetLoadableTypes)
                 .Where(type => type.IsClass && !type.IsAbstract && constraints.All(constraint => constraint.IsAssignableFrom(type))).ToArray()
             ).ToArray();
 
@@ -234,70 +218,73 @@ public static class ServiceRegistrar
 
         var requestGenericTypeDefinition = requestType.GetGenericTypeDefinition();
 
-        var combinations = GenerateCombinations(requestType, typesThatCanCloseForEachParameter, 0, cancellationToken);
+        var combinations = GenerateCombinations(requestType, typesThatCanCloseForEachParameter, configuration, cancellationToken);
 
         return combinations.Select(types => requestGenericTypeDefinition.MakeGenericType(types.ToArray())).ToArray();
     }
 
     /// <summary>
-    /// Recursively generates all possible combinations of types to close generic type parameters.
+    /// Generates all possible combinations of types to close generic type parameters.
     /// Validates limits for max generic parameters, max types per parameter, and max total registrations.
     /// </summary>
     /// <param name="requestType">The generic request type definition.</param>
     /// <param name="lists">Arrays of types that can close each generic parameter.</param>
-    /// <param name="depth">Current recursion depth.</param>
+    /// <param name="configuration">Configuration holding the registration limits.</param>
     /// <param name="cancellationToken">Cancellation token to stop processing.</param>
     /// <returns>Enumerable of type lists representing each combination.</returns>
-    public static IEnumerable<List<Type>> GenerateCombinations(Type requestType, Type[][] lists, int depth = 0, CancellationToken cancellationToken = default)
+    public static IEnumerable<List<Type>> GenerateCombinations(Type requestType, Type[][] lists, MediatRServiceConfiguration configuration, CancellationToken cancellationToken = default)
     {
-        if (depth == 0)
+        if (configuration.MaxGenericTypeParameters > 0 && lists.Length > configuration.MaxGenericTypeParameters)
+            throw new ArgumentException($"Error registering the generic type: {requestType.FullName}. The number of generic type parameters exceeds the maximum allowed ({configuration.MaxGenericTypeParameters}).");
+
+        foreach (var list in lists)
         {
-            if (MaxGenericTypeParameters > 0 && lists.Length > MaxGenericTypeParameters)
-                throw new ArgumentException($"Error registering the generic type: {requestType.FullName}. The number of generic type parameters exceeds the maximum allowed ({MaxGenericTypeParameters}).");
-
-            foreach (var list in lists)
-            {
-                if (MaxTypesClosing > 0 && list.Length > MaxTypesClosing)
-                    throw new ArgumentException($"Error registering the generic type: {requestType.FullName}. One of the generic type parameter's count of types that can close exceeds the maximum length allowed ({MaxTypesClosing}).");
-            }
-
-            long totalCombinations = 1;
-            foreach (var list in lists)
-            {
-                totalCombinations *= list.Length;
-                if (MaxGenericTypeParameters > 0 && totalCombinations > MaxGenericTypeRegistrations)
-                    throw new ArgumentException($"Error registering the generic type: {requestType.FullName}. The total number of generic type registrations exceeds the maximum allowed ({MaxGenericTypeRegistrations}).");
-            }
+            if (configuration.MaxTypesClosing > 0 && list.Length > configuration.MaxTypesClosing)
+                throw new ArgumentException($"Error registering the generic type: {requestType.FullName}. One of the generic type parameter's count of types that can close exceeds the maximum length allowed ({configuration.MaxTypesClosing}).");
         }
 
+        long totalCombinations = 1;
+        foreach (var list in lists)
+        {
+            totalCombinations *= list.Length;
+            if (configuration.MaxGenericTypeRegistrations > 0 && totalCombinations > configuration.MaxGenericTypeRegistrations)
+                throw new ArgumentException($"Error registering the generic type: {requestType.FullName}. The total number of generic type registrations exceeds the maximum allowed ({configuration.MaxGenericTypeRegistrations}).");
+        }
+
+        return GenerateCombinationsCore(lists, 0, cancellationToken);
+    }
+
+    // Cartesian product of the candidate lists. The base case yields one empty combination so that each
+    // level has something to prepend to; without it the whole product is empty.
+    private static List<List<Type>> GenerateCombinationsCore(Type[][] lists, int depth, CancellationToken cancellationToken)
+    {
         if (depth >= lists.Length)
-        {
-            Enumerable.Empty<List<Type>>();
-            yield break;
-        }
+            return [[]];
 
         cancellationToken.ThrowIfCancellationRequested();
 
-        var currentList = lists[depth];
-        var childCombinations = GenerateCombinations(requestType, lists, depth + 1, cancellationToken);
+        var childCombinations = GenerateCombinationsCore(lists, depth + 1, cancellationToken);
+        var result = new List<List<Type>>(lists[depth].Length * childCombinations.Count);
 
-        foreach (var item in currentList)
+        foreach (var item in lists[depth])
         {
             foreach (var childCombination in childCombinations)
             {
-                var currentCombination = new List<Type> { item };
+                var currentCombination = new List<Type>(childCombination.Count + 1) { item };
                 currentCombination.AddRange(childCombination);
-                yield return currentCombination;
+                result.Add(currentCombination);
             }
         }
+
+        return result;
     }
 
     // Adds all generic concretions that can close the open request interface by generating concrete types and registering them.
-    private static void AddAllConcretionsThatClose(Type openRequestInterface, Type[] concretions, IServiceCollection services, IEnumerable<Assembly> assembliesToScan, CancellationToken cancellationToken)
+    private static void AddAllConcretionsThatClose(Type openRequestInterface, Type[] concretions, IServiceCollection services, IEnumerable<Assembly> assembliesToScan, MediatRServiceConfiguration configuration, CancellationToken cancellationToken)
     {
         foreach (var concretion in concretions)
         {
-            var concreteRequests = GetConcreteRequestTypes(openRequestInterface, concretion, assembliesToScan, cancellationToken);
+            var concreteRequests = GetConcreteRequestTypes(openRequestInterface, concretion, assembliesToScan, configuration, cancellationToken);
 
             if (concreteRequests is null)
                 continue;
@@ -307,7 +294,7 @@ public static class ServiceRegistrar
             foreach (var (Service, Implementation) in registrationTypes)
             {
                 cancellationToken.ThrowIfCancellationRequested();
-                services.AddScoped(Service, Implementation);
+                services.Add(new ServiceDescriptor(Service, Implementation, configuration.Lifetime));
             }
         }
     }
@@ -383,6 +370,20 @@ public static class ServiceRegistrar
         list.Add(value);
     }
 
+    // Returns the types an assembly can actually load. Assembly.GetTypes() throws ReflectionTypeLoadException
+    // if any single type has an unresolvable dependency; the loadable ones are still available on the exception.
+    internal static IEnumerable<Type> GetLoadableTypes(Assembly assembly)
+    {
+        try
+        {
+            return assembly.DefinedTypes;
+        }
+        catch (ReflectionTypeLoadException ex)
+        {
+            return ex.Types.Where(t => t is not null)!;
+        }
+    }
+
     /// <summary>
     /// Adds the core MediatR services such as IMediator and pipeline behaviors to the service collection.
     /// Uses TryAdd to avoid overriding existing registrations.
@@ -391,6 +392,10 @@ public static class ServiceRegistrar
     /// <param name="serviceConfiguration">Configuration specifying the Mediator implementation and behaviors to register.</param>
     public static void AddRequiredServices(IServiceCollection services, MediatRServiceConfiguration serviceConfiguration)
     {
+        // Singleton: the wrapper cache must outlive individual scopes or every request pays the reflection
+        // cost again, but it stays owned by this container so it is collected when the container is disposed.
+        services.TryAdd(new ServiceDescriptor(typeof(RequestHandlerWrapperCache), new RequestHandlerWrapperCache()));
+
         // Use TryAdd to preserve existing registrations
         services.TryAdd(new ServiceDescriptor(typeof(IMediator), serviceConfiguration.MediatorImplementationType, serviceConfiguration.Lifetime));
 

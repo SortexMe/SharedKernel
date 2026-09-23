@@ -1,4 +1,4 @@
-using FluentAssertions;
+﻿using FluentAssertions;
 using Microsoft.Extensions.DependencyInjection;
 using SharedKernel.Abstractions.CQRS;
 using SharedKernel.DependencyInjection;
@@ -18,7 +18,7 @@ public class ErrorHandlingTests
         {
             options.RegisterServicesFromAssembly(Assembly.GetExecutingAssembly());
         });
-        
+
         using var serviceProvider = services.BuildServiceProvider();
         var mediator = serviceProvider.GetRequiredService<IMediator>();
         var command = new NoHandlerCommand("Test");
@@ -37,7 +37,7 @@ public class ErrorHandlingTests
         {
             options.RegisterServicesFromAssembly(Assembly.GetExecutingAssembly());
         });
-        
+
         using var serviceProvider = services.BuildServiceProvider();
         var mediator = serviceProvider.GetRequiredService<IMediator>();
         object command = new NoHandlerCommand("Dynamic Test");
@@ -56,7 +56,7 @@ public class ErrorHandlingTests
         {
             options.RegisterServicesFromAssembly(Assembly.GetExecutingAssembly());
         });
-        
+
         using var serviceProvider = services.BuildServiceProvider();
         var mediator = serviceProvider.GetRequiredService<IMediator>();
         object invalidCommand = "This is not an IRequest";
@@ -77,7 +77,7 @@ public class ErrorHandlingTests
         {
             options.RegisterServicesFromAssembly(Assembly.GetExecutingAssembly());
         });
-        
+
         using var serviceProvider = services.BuildServiceProvider();
         var mediator = serviceProvider.GetRequiredService<IMediator>();
         var command = new ThrowingCommand("Test exception");
@@ -98,7 +98,7 @@ public class ErrorHandlingTests
         {
             options.RegisterServicesFromAssembly(Assembly.GetExecutingAssembly());
         });
-        
+
         using var serviceProvider = services.BuildServiceProvider();
         var mediator = serviceProvider.GetRequiredService<IMediator>();
         var command = new NullReturningCommand();
@@ -120,10 +120,10 @@ public class ErrorHandlingTests
         {
             options.RegisterServicesFromAssembly(Assembly.GetExecutingAssembly());
         });
-        
+
         using var serviceProvider = services.BuildServiceProvider();
         var mediator = serviceProvider.GetRequiredService<IMediator>();
-        
+
         var largeData = new string('x', 10000); // 10KB string
         var command = new LargeDataCommand { Data = largeData };
 
@@ -139,16 +139,16 @@ public class ErrorHandlingTests
     {
         // Arrange
         var services = new ServiceCollection();
-        services.AddSingleton<IRequestHandler<NestedGenericCommand<List<Dictionary<string, int>>>, string>, 
+        services.AddSingleton<IRequestHandler<NestedGenericCommand<List<Dictionary<string, int>>>, string>,
             NestedGenericCommandHandler>();
         services.AddMediator(options =>
         {
             options.RegisterServicesFromAssembly(Assembly.GetExecutingAssembly());
         });
-        
+
         using var serviceProvider = services.BuildServiceProvider();
         var mediator = serviceProvider.GetRequiredService<IMediator>();
-        
+
         var command = new NestedGenericCommand<List<Dictionary<string, int>>>
         {
             Data = new List<Dictionary<string, int>>
