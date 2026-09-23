@@ -1,5 +1,4 @@
 ﻿using System;
-using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
 
 namespace SharedKernel.Entities.Base;
@@ -11,6 +10,8 @@ namespace SharedKernel.Entities.Base;
 /// <remarks>
 /// Inherits from <see cref="HasDomainEventsBase"/> to support domain event dispatching,
 /// and implements <see cref="IEntityBase"/> and <see cref="IEquatable{DomainEntityBase}"/>.
+/// Transient entities — those whose <see cref="Id"/> is still <see cref="Guid.Empty"/> — are only equal to themselves,
+/// because they have no identity yet.
 /// </remarks>
 public abstract class DomainEntityBase : HasDomainEventsBase, IEntityBase, IEquatable<DomainEntityBase>
 {
@@ -25,12 +26,16 @@ public abstract class DomainEntityBase : HasDomainEventsBase, IEntityBase, IEqua
     /// </summary>
     /// <param name="first">The first entity to compare.</param>
     /// <param name="second">The second entity to compare.</param>
-    /// <returns>True if both are non-null and their Ids are equal; otherwise, false.</returns>
-    // Development Note:
-    // Custom equality operator to allow intuitive comparisons between aggregate root instances.
+    /// <returns>True if both are null, or both are non-null with the same <see cref="Id"/>; otherwise, false.</returns>
     public static bool operator ==(DomainEntityBase? first, DomainEntityBase? second)
     {
-        return first is not null && second is not null && first.Equals(second);
+        if (ReferenceEquals(first, second))
+            return true;
+
+        if (first is null || second is null)
+            return false;
+
+        return first.Equals(second);
     }
 
     /// <summary>
@@ -39,43 +44,33 @@ public abstract class DomainEntityBase : HasDomainEventsBase, IEntityBase, IEqua
     /// <param name="first">The first entity.</param>
     /// <param name="second">The second entity.</param>
     /// <returns>True if entities are not equal; otherwise, false.</returns>
-    public static bool operator !=(DomainEntityBase? first, DomainEntityBase? second)
-    {
-        return !(first == second);
-    }
+    public static bool operator !=(DomainEntityBase? first, DomainEntityBase? second) => !(first == second);
 
     /// <summary>
     /// Determines whether the specified object is equal to the current entity.
     /// </summary>
     /// <param name="obj">The object to compare with the current entity.</param>
-    /// <returns>True if the object is a <see cref="DomainEntityBase"/> with the same <see cref="Id"/>; otherwise, false.</returns>
-    // Development Note:
-    // Ensures domain entities are compared by identity, not reference or value.
-    public override bool Equals(object? obj)
-    {
-        if (obj == null)
-            return false;
-
-        if (obj.GetType() != GetType())
-            return false;
-
-        if (obj is not DomainEntityBase entity)
-            return false;
-
-        return entity.Id == Id;
-    }
+    /// <returns>True if the object is a <see cref="DomainEntityBase"/> of the same type with the same, non-empty <see cref="Id"/>; otherwise, false.</returns>
+    public override bool Equals(object? obj) => Equals(obj as DomainEntityBase);
 
     /// <summary>
     /// Indicates whether the current object is equal to another <see cref="DomainEntityBase"/> instance.
     /// </summary>
     /// <param name="other">The entity to compare with the current entity.</param>
-    /// <returns>True if the entities have the same type and <see cref="Id"/>; otherwise, false.</returns>
+    /// <returns>True if the entities have the same type and the same, non-empty <see cref="Id"/>; otherwise, false.</returns>
     public bool Equals(DomainEntityBase? other)
     {
-        if (other == null)
+        if (other is null)
             return false;
 
-        if (other.GetType() != GetType())
+        if (ReferenceEquals(this, other))
+            return true;
+
+        if (EntityTypeResolver.GetEntityType(this) != EntityTypeResolver.GetEntityType(other))
+            return false;
+
+        // Two unsaved entities share Guid.Empty without being the same thing.
+        if (Id == Guid.Empty || other.Id == Guid.Empty)
             return false;
 
         return other.Id == Id;
@@ -85,8 +80,5 @@ public abstract class DomainEntityBase : HasDomainEventsBase, IEntityBase, IEqua
     /// Serves as the default hash function.
     /// </summary>
     /// <returns>A hash code based on the <see cref="Id"/>.</returns>
-    public override int GetHashCode()
-    {
-        return Id.GetHashCode();
-    }
+    public override int GetHashCode() => Id.GetHashCode();
 }

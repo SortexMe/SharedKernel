@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Text;
 
 namespace SharedKernel.Common.DTOs.Auth;
 
@@ -57,5 +58,17 @@ public record CreateUserDTO
         Password = password;
         PhoneNumber = phoneNumber;
         CountryId = countryId;
+    }
+
+    // Records print every member in ToString(); keep the password out of logs and debugger output.
+    protected virtual bool PrintMembers(StringBuilder builder)
+    {
+        builder.Append("UserName = ").Append(UserName)
+               .Append(", ContactName = ").Append(ContactName)
+               .Append(", Email = ").Append(Email)
+               .Append(", Password = ***")
+               .Append(", PhoneNumber = ").Append(PhoneNumber)
+               .Append(", CountryId = ").Append(CountryId);
+        return true;
     }
 }

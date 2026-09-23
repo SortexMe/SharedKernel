@@ -1,5 +1,7 @@
 ﻿using SharedKernel.DomainEvents;
+using System;
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using System.ComponentModel.DataAnnotations.Schema;
 
 namespace SharedKernel.Entities.Base;
@@ -13,22 +15,29 @@ namespace SharedKernel.Entities.Base;
 /// </remarks>
 public abstract class HasDomainEventsBase
 {
-    // Backing list for domain events; initialized to empty list.
-    private List<DomainEventBase> _domainEvents = new List<DomainEventBase>();
+    private readonly List<DomainEventBase> _domainEvents = [];
+    private ReadOnlyCollection<DomainEventBase>? _readOnlyView;
 
     /// <summary>
-    /// Gets a read-only collection of domain events that have been registered by the entity.
+    /// Gets a read-only view of the domain events registered by the entity.
     /// </summary>
     [NotMapped] // This property is not mapped to any database column.
-    public IReadOnlyCollection<DomainEventBase> DomainEvents => _domainEvents.AsReadOnly();
+    public IReadOnlyCollection<DomainEventBase> DomainEvents => _readOnlyView ??= _domainEvents.AsReadOnly();
 
     /// <summary>
     /// Registers a new domain event to be dispatched later.
     /// </summary>
     /// <param name="domainEvent">The domain event instance to register.</param>
+    /// <exception cref="ArgumentNullException">Thrown when <paramref name="domainEvent"/> is null.</exception>
     // Development Note:
     // Events registered here are typically dispatched by an external dispatcher after persistence.
-    public void RegisterDomainEvent(DomainEventBase domainEvent) => _domainEvents.Add(domainEvent);
+    public void RegisterDomainEvent(DomainEventBase domainEvent)
+    {
+        if (domainEvent is null)
+            throw new ArgumentNullException(nameof(domainEvent));
+
+        _domainEvents.Add(domainEvent);
+    }
 
     /// <summary>
     /// Clears all domain events from the entity.

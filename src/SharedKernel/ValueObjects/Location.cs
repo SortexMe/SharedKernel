@@ -87,7 +87,7 @@ public sealed class Location : ValueObject
     /// Returns the atomic values that define equality for this <see cref="Location"/>.
     /// </summary>
     /// <returns>A sequence of objects representing the equality components.</returns>
-    protected override IEnumerable<object> GetEqualityComponents()
+    protected override IEnumerable<object?> GetEqualityComponents()
     {
         yield return Longitude;
         yield return Latitude;

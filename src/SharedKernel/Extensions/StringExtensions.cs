@@ -1,4 +1,6 @@
-﻿namespace SharedKernel.Extensions;
+﻿using System.Globalization;
+
+namespace SharedKernel.Extensions;
 
 /// <summary>
 /// Provides extension methods for <see cref="string"/> to convert to numeric types safely.
@@ -14,12 +16,11 @@ public static class StringExtensions
     public static long ToLong(this string? value)
     {
         // Development notes:
-        // - If the input is null or whitespace, returns 0 to avoid exceptions.
+        // - Null, empty and whitespace all return 0 (TryParse rejects them).
         // - Uses TryParse to safely parse without throwing exceptions.
-        if (string.IsNullOrWhiteSpace(value))
-            return 0;
-
-        long.TryParse(value, out long result);
+        // Invariant culture: the current culture may treat "." or "," as a group separator and accept
+        // values a Web API caller never intended.
+        long.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out long result);
         return result;
     }
 
@@ -34,7 +35,7 @@ public static class StringExtensions
         // Development notes:
         // - Uses TryParse to avoid exceptions on invalid input.
         // - Null or invalid strings return 0.
-        int.TryParse(value, out int result);
+        int.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out int result);
         return result;
     }
 }

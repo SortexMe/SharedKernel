@@ -1,6 +1,7 @@
 ﻿using SharedKernel.Common.DTOs;
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Net;
 
 namespace SharedKernel.Common.Exceptions;
@@ -15,33 +16,49 @@ namespace SharedKernel.Common.Exceptions;
 public class DomainException : Exception
 {
     // Backing list of validation errors.
-    private readonly List<DTOValidationError> errors = [];
+    private readonly List<DTOValidationError> _errors = [];
 
     /// <summary>
     /// Gets the read-only collection of validation errors associated with this exception.
     /// </summary>
-    public IReadOnlyCollection<DTOValidationError> Errors => errors;
+    public IReadOnlyCollection<DTOValidationError> Errors => _errors;
 
     // Private constructors enforce use of factory methods for controlled instantiation.
 
     private DomainException(string errorMessage) : base(errorMessage)
     {
-        errors.Add(DTOValidationError.CreateInternalError(errorMessage));
+        _errors.Add(DTOValidationError.CreateInternalError(errorMessage));
     }
 
     private DomainException(string errorMessage, string errorCode) : base(errorMessage)
     {
-        errors.Add(DTOValidationError.CreateSimpleError(errorMessage, errorCode));
+        _errors.Add(DTOValidationError.CreateSimpleError(errorMessage, errorCode));
     }
 
     private DomainException(string errorMessage, string errorCode, string propertyName) : base(errorMessage)
     {
-        errors.Add(DTOValidationError.CreateDetailedError(errorMessage, errorCode, propertyName));
+        _errors.Add(DTOValidationError.CreateDetailedError(errorMessage, errorCode, propertyName));
     }
 
-    private DomainException(IEnumerable<DTOValidationError> errors)
+    private DomainException(IEnumerable<DTOValidationError> errors) : base(JoinMessages(errors))
     {
-        this.errors.AddRange(errors);
+        _errors.AddRange(errors);
+    }
+
+    // The base Exception.Message is what ends up in logs and stack traces; make it carry every error.
+    private static string JoinMessages(IEnumerable<DTOValidationError> errors)
+    {
+        if (errors is null)
+            throw new ArgumentNullException(nameof(errors));
+
+        var messages = errors.Select(e => e.ErrorMessage).Where(m => !string.IsNullOrWhiteSpace(m)).ToArray();
+
+        return messages.Length switch
+        {
+            0 => "One or more domain validation errors occurred.",
+            1 => messages[0]!,
+            _ => string.Join(" | ", messages),
+        };
     }
 
     /// <summary>
@@ -90,7 +107,7 @@ public class DomainException : Exception
     /// <param name="exception">The domain exception.</param>
     public static implicit operator BaseResponseDTO(DomainException exception)
     {
-        var response = BaseResponseDTO.WithErrors(exception.errors.ToArray());
+        var response = BaseResponseDTO.WithErrors(exception._errors.ToArray());
         response.StatusCode = (int)HttpStatusCode.BadRequest;
         return response;
     }

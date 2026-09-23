@@ -1,4 +1,4 @@
-using FluentAssertions;
+﻿using FluentAssertions;
 using Microsoft.Extensions.DependencyInjection;
 using SharedKernel.Abstractions.CQRS;
 using SharedKernel.DependencyInjection;
@@ -10,7 +10,7 @@ namespace SharedKernel.Mediator.Tests;
 public class SendTests
 {
     private readonly IServiceProvider serviceProvider;
-    
+
     public SendTests()
     {
         serviceProvider = BuildServiceProvider();
@@ -137,7 +137,7 @@ public class SendTests
         // Assert
         results.Should().HaveCount(10);
         results.Should().AllSatisfy(result => result.Should().StartWith("Pong: Concurrent-"));
-        
+
         // Verify all results are unique
         results.Distinct().Should().HaveCount(10);
     }
