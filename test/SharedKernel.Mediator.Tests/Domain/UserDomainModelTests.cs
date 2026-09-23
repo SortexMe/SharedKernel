@@ -1,4 +1,4 @@
-﻿using FluentAssertions;
+using FluentAssertions;
 using SharedKernel.Abstractions.Data;
 using SharedKernel.Common.DTOs;
 using SharedKernel.Common.DTOs.Auth;
@@ -249,8 +249,63 @@ public class UserDomainModelTests
     {
         var ctor1 = () => new UserDomainModel(null!, new RecordingUserRepository());
         var ctor2 = () => new UserDomainModel(ActiveUser(), null!);
+        var ctor3 = () => new UserDomainModel(null!);
 
         ctor1.Should().Throw<ArgumentNullException>();
         ctor2.Should().Throw<ArgumentNullException>();
+        ctor3.Should().Throw<ArgumentNullException>();
+    }
+
+    [Fact]
+    public void Constructor_With_User_Only_Should_Succeed_And_Perform_Operations()
+    {
+        var user = ActiveUser();
+        var model = new UserDomainModel(user);
+
+        var act = () => model.LoginUser(isPasswordValid: true, newRefreshToken: "token123");
+
+        act.Should().NotThrow();
+        user.RefreshToken.Should().Be("token123");
+    }
+
+    private sealed class CustomPolicyUserDomainModel : UserDomainModel
+    {
+        public CustomPolicyUserDomainModel(ApplicationUser user, IUserRepository userRepository)
+            : base(user, userRepository)
+        {
+        }
+
+        public override int MaxFailedAccessAttempts => 10;
+        public override TimeSpan LockoutDuration => TimeSpan.FromMinutes(45);
+    }
+
+    [Fact]
+    public void Derived_UserDomainModel_Should_Respect_Overridden_Policy_Properties()
+    {
+        var user = ActiveUser();
+        user.LockoutEnabled = true;
+        var repo = new RecordingUserRepository();
+        var model = new CustomPolicyUserDomainModel(user, repo);
+
+        // 5 failed attempts (default threshold of 5 would have triggered lockout)
+        for (int i = 0; i < 5; i++)
+        {
+            var failAct = () => model.LoginUser(isPasswordValid: false, newRefreshToken: "rt");
+            failAct.Should().Throw<DomainException>();
+        }
+
+        user.LockoutEnd.Should().BeNull(); // Still not locked out because MaxFailedAccessAttempts is overridden to 10
+        user.AccessFailedCount.Should().Be(5);
+
+        // 5 more failed attempts reaching the custom threshold of 10
+        for (int i = 5; i < 10; i++)
+        {
+            var failAct = () => model.LoginUser(isPasswordValid: false, newRefreshToken: "rt");
+            failAct.Should().Throw<DomainException>();
+        }
+
+        user.LockoutEnd.Should().NotBeNull(); // Now locked out
+        user.AccessFailedCount.Should().Be(10);
+        user.LockoutEnd.Should().BeAfter(DateTimeOffset.UtcNow.AddMinutes(40)); // Uses overridden 45 min duration
     }
 }
